@@ -2,3 +2,5 @@
 .terraform/*
 .terraform
 .vs
+iac/terraform.tfstate
+iac/.terraform.lock.hcl
