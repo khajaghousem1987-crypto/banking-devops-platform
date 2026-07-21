@@ -13,3 +13,7 @@ output "private_subnet_1" {
 output "private_subnet_2" {
  value = aws_subnet.private2.id
 }
+
+output "nat_gateway_id" {
+ value = aws_nat_gateway.this.id
+}
