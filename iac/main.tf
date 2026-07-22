@@ -19,4 +19,61 @@ module "vpc" {
   az2 = var.az2
 
 }
+module "security_group" {
+ 
+  source = "./modules/security-group"
+ 
+  project_name = var.project_name
+  environment  = var.environment
+ 
+  vpc_id = module.vpc.vpc_id
+ 
+  ssh_cidr = var.ssh_cidr
+}
 
+module "iam" {
+ 
+  source = "./modules/iam"
+ 
+  project_name = var.project_name
+ 
+  environment = var.environment
+ 
+}
+
+module "ecr" {
+ 
+  source = "./modules/ecr"
+ 
+  project_name = var.project_name
+ 
+  environment = var.environment
+ 
+}
+
+module "cloudwatch" {
+ 
+  source = "./modules/cloudwatch"
+ 
+  project_name = var.project_name
+ 
+  environment = var.environment
+ 
+}
+
+module "alb" {
+ 
+  source = "./modules/alb"
+ 
+  project_name = var.project_name
+ 
+  environment = var.environment
+ 
+  vpc_id = module.vpc.vpc_id
+ 
+  public_subnet_ids = module.vpc.public_subnet_ids
+ 
+  security_group_id = module.security_group.security_group_id
+ 
+}
+ 

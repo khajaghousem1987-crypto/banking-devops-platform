@@ -28,3 +28,8 @@ variable "environment" {
   type = string
 
 }
+
+variable "ssh_cidr" {
+  description = "Allowed CIDR for SSH"
+  type        = string
+}
