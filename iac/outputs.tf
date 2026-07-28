@@ -20,3 +20,9 @@ output "target_group_arn" {
   value = module.alb.target_group_arn
  
 }
+
+output "ecs_cluster_name" {
+ 
+  value = module.ecs.cluster_name
+ 
+}
