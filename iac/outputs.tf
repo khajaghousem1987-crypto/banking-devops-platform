@@ -26,3 +26,10 @@ output "ecs_cluster_name" {
   value = module.ecs.cluster_name
  
 }
+
+output "task_definition_arn" {
+ 
+  value = module.ecs.task_definition_arn
+ 
+}
+
