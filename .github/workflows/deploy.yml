@@ -148,8 +148,7 @@ jobs:
         run: |
           aws ecs describe-task-definition \
             --task-definition "${ECS_TASK_DEFINITION_FAMILY}" \
-            --query taskDefinition \
-> task-definition.json
+            --query taskDefinition > task-definition.json
  
       #########################################################
       # Remove ECS-generated fields
