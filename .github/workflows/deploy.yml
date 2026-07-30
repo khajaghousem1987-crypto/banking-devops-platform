@@ -70,7 +70,7 @@ jobs:
             --confidence-level medium
  
       #########################################################
-      # Configure AWS credentials
+      # Configure AWS credentials --check 
       #########################################################
  
       - name: Configure AWS credentials
@@ -81,7 +81,7 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
  
       #########################################################
-      # Login to Amazon ECR
+      # Login to Amazon ECR -- check
       #########################################################
  
       - name: Login to Amazon ECR
