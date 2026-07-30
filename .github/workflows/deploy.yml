@@ -221,6 +221,6 @@ jobs:
             echo "- ECR repository: ${ECR_REPOSITORY}"
             echo "- Image tag: ${GITHUB_SHA}"
           } >> "$GITHUB_STEP_SUMMARY"
-        run: |
+       
           echo Add other actions to build,
           echo test, and deploy your project.
