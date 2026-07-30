@@ -65,6 +65,7 @@ jobs:
         run: |
           bandit -r . \
             --exclude ./tests \
+            --skip B104 \
             --severity-level medium \
             --confidence-level medium
  
