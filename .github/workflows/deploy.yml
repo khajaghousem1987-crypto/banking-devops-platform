@@ -138,7 +138,6 @@ jobs:
       - name: Push Docker image to ECR
         run: |
           docker push "${{ steps.image.outputs.image_uri }}"
-          docker push "${{ steps.image.outputs.latest_image_uri }}"
  
       #########################################################
       # Download current ECS task definition
