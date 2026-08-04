@@ -2,71 +2,71 @@ variable "project_name" {
 
   description = "Project Name"
 
-  type        = string
+  type = string
 
 }
- 
+
 variable "environment" {
 
   description = "Environment"
 
-  type        = string
+  type = string
 
 }
- 
+
 variable "private_subnet_ids" {
 
   description = "Private Subnet IDs"
 
-  type        = list(string)
+  type = list(string)
 
 }
- 
+
 variable "security_group_id" {
 
   description = "Security Group ID"
 
-  type        = string
+  type = string
 
 }
- 
+
 variable "execution_role_arn" {
 
   description = "ECS Execution Role ARN"
 
-  type        = string
+  type = string
 
 }
- 
+
 variable "task_role_arn" {
 
   description = "ECS Task Role ARN"
 
-  type        = string
+  type = string
 
 }
- 
+
 variable "repository_url" {
 
   description = "ECR Repository URL"
 
-  type        = string
+  type = string
 
 }
- 
+
 variable "target_group_arn" {
 
   description = "ALB Target Group ARN"
 
-  type        = string
+  type = string
 
 }
- 
+
 variable "log_group_name" {
 
   description = "CloudWatch Log Group"
 
-  type        = string
+  type = string
 
 }
  

@@ -2,39 +2,39 @@ variable "project_name" {
 
   description = "Project Name"
 
-  type        = string
+  type = string
 
 }
- 
+
 variable "environment" {
 
   description = "Environment"
 
-  type        = string
+  type = string
 
 }
- 
+
 variable "vpc_id" {
 
   description = "VPC ID"
 
-  type        = string
+  type = string
 
 }
- 
+
 variable "public_subnet_ids" {
 
   description = "Public Subnet IDs"
 
-  type        = list(string)
+  type = list(string)
 
 }
- 
+
 variable "security_group_id" {
 
   description = "ALB Security Group"
 
-  type        = string
+  type = string
 
 }
  
