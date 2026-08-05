@@ -1,6 +1,6 @@
 package terraform.s3
  
-deny[msg] {
+deny contains msg if {
  
     resource := input.resource_changes[_]
  
@@ -8,6 +8,8 @@ deny[msg] {
  
     resource.change.after.acl == "public-read"
  
-    msg := sprintf("Bucket %s is public.",
+    msg := sprintf("Bucket %s is public",
+
         [resource.name])
-}
+
+} 

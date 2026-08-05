@@ -1,4 +1,4 @@
-package terraform.tags
+package terraform. Tags
  
 required_tags := {
     "Project",
@@ -6,7 +6,7 @@ required_tags := {
     "Owner"
 }
  
-deny[msg] {
+deny contains msg if {
  
     resource := input.resource_changes[_]
  
@@ -16,6 +16,6 @@ deny[msg] {
  
     not tags[required]
  
-    msg := sprintf("%s missing tag %s",
+    msg := sprintf("%s missing mandatory tag %s",
         [resource.name, required])
 }
