@@ -127,17 +127,17 @@ jobs:
       - name: Pretty Print VPC
         working-directory: iac
         run: |
-          python3 - <<EOF
+          python3 <<'EOF'
           import json
-          
-          with open("tfplan.json") as f:
-              data=json.load(f)
-          
-          for r in data["resource_changes"]:
-            if r["type"]=="aws_vpc":
-                import pprint
-                pprint.pp(r)
-           EOF
+          import pprint
+      
+          with open("tfplan.json", encoding="utf-8") as file:
+              data = json.load(file)
+      
+          for resource in data.get("resource_changes", []):
+              if resource.get("type") == "aws_vpc":
+                  pprint.pp(resource)
+          EOF
           
 
       #####################################################
