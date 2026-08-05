@@ -93,7 +93,7 @@ jobs:
       #####################################################
       # Terraform
       #####################################################
-
+           
       - uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Init
@@ -115,6 +115,7 @@ jobs:
         run: terraform validate
 
       - name: Terraform Plan
+      
 
         working-directory: iac
 
@@ -123,6 +124,21 @@ jobs:
           terraform plan -out=tfplan
 
           terraform show -json tfplan > tfplan.json
+      - name: Pretty Print VPC
+        working-directory: iac
+        run: |
+          python3 - <<EOF
+          import json
+          
+          with open("tfplan.json") as f:
+              data=json.load(f)
+          
+          for r in data["resource_changes"]:
+            if r["type"]=="aws_vpc":
+                import pprint
+                pprint.pp(r)
+          EOF 
+          
 
       #####################################################
       # Install OPA
