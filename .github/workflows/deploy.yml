@@ -137,7 +137,7 @@ jobs:
             if r["type"]=="aws_vpc":
                 import pprint
                 pprint.pp(r)
-          EOF 
+           EOF
           
 
       #####################################################
