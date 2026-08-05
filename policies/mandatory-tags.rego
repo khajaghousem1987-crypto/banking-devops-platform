@@ -1,4 +1,4 @@
-package terraform. Tags
+package terraform.tags 
  
 required_tags := {
     "Project",
