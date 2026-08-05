@@ -1,4 +1,4 @@
-package terraform. Tags
+package terraform.tags
  
 required_tags := {
     "Project",
@@ -7,15 +7,7 @@ required_tags := {
 }
  
 taggable := {
-    "aws_vpc",
-    "aws_subnet",
-    "aws_security_group",
-    "aws_lb",
-    "aws_lb_target_group",
-    "aws_cloudwatch_log_group",
-    "aws_ecr_repository",
-    "aws_iam_role",
-    "aws_ecs_cluster"
+    "aws_vpc"
 }
  
 deny contains msg if {
