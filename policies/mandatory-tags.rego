@@ -16,7 +16,7 @@ deny contains msg if {
  
     taggable[resource.type]
  
-    tags := resource.change.after.tags
+    tags := resource.change.after.tags_all
  
     required := required_tags[_]
  
