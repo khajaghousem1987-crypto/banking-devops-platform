@@ -15,10 +15,16 @@ output "alb_dns_name" {
 
 }
 
-output "target_group_arn" {
+output "blue_target_group_arn" {
+  value = module.alb.blue_target_group_arn
+}
 
-  value = module.alb.target_group_arn
+output "green_target_group_arn" {
+  value = module.alb.green_target_group_arn
+}
 
+output "listener_arn" {
+  value = module.alb.listener_arn
 }
 
 output "ecs_cluster_name" {

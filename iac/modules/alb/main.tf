@@ -23,6 +23,7 @@ resource "aws_lb" "banking_alb" {
 
 }
 
+
 resource "aws_lb_target_group" "banking_tg" {
 
   name = "${var.project_name}-${var.environment}-tg"
@@ -55,6 +56,29 @@ resource "aws_lb_target_group" "banking_tg" {
 
   }
 
+}
+resource "aws_lb_target_group" "green_tg" {
+  name        = "${var.project_name}-${var.environment}-green-tg"
+  port        = 80
+  protocol    = "HTTP"
+  target_type = "ip"
+  vpc_id      = var.vpc_id
+
+  health_check {
+    enabled             = true
+    path                = "/"
+    protocol            = "HTTP"
+    matcher             = "200"
+    interval            = 30
+    timeout              = 5
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+  }
+
+  tags = {
+    Name        = "${var.project_name}-${var.environment}-green-tg"
+    Environment = var.environment
+  }
 }
 
 resource "aws_lb_listener" "http" {
