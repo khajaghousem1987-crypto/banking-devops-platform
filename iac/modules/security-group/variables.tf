@@ -16,5 +16,5 @@ variable "vpc_id" {
 variable "ssh_cidr" {
   description = "CIDR block allowed for SSH access"
   type        = string
-  default     = "0.0.0.0/0"
+  default     = "49.204.5.136/32"
 }
