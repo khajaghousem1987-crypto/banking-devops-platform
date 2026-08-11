@@ -1,13 +1,9 @@
-output "security_group_id" {
-
-  description = "Application Security Group ID"
-
-  value = aws_security_group.banking_app_sg.id
+output "alb_security_group_id" {
+  description = "ALB Security Group ID"
+  value       = aws_security_group.alb_sg.id
 }
 
-output "security_group_name" {
-
-  description = "Application Security Group Name"
-
-  value = aws_security_group.banking_app_sg.name
+output "ecs_security_group_id" {
+  description = "ECS Task Security Group ID"
+  value       = aws_security_group.ecs_task_sg.id
 }

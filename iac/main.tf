@@ -60,21 +60,15 @@ module "cloudwatch" {
   environment = var.environment
 
 }
-
 module "alb" {
-
   source = "./modules/alb"
 
-  project_name = var.project_name
-
-  environment = var.environment
-
-  vpc_id = module.vpc.vpc_id
-
+  project_name      = var.project_name
+  environment       = var.environment
+  vpc_id            = module.vpc.vpc_id
   public_subnet_ids = module.vpc.public_subnet_ids
 
-  security_group_id = module.security_group.security_group_id
-
+  security_group_id = module.security_group.alb_security_group_id
 }
 
 module "ecs" {
@@ -87,7 +81,7 @@ module "ecs" {
 
   private_subnet_ids = module.vpc.private_subnet_ids
 
-  security_group_id = module.security_group.security_group_id
+  security_group_id = module.security_group.ecs_security_group_id
 
   execution_role_arn = module.iam.ecs_execution_role_arn
 
@@ -100,5 +94,6 @@ module "ecs" {
   log_group_name = module.cloudwatch.log_group_name
 
 }
+
 
 

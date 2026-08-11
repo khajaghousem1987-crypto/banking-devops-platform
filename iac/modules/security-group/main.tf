@@ -1,114 +1,87 @@
-#main.tf
-resource "aws_security_group" "banking_app_sg" {
+#################################################
+# ALB SECURITY GROUP
+#################################################
 
-  name = "${var.project_name}-${var.environment}-app-sg"
-
-  description = "Security Group for Banking Application EC2"
-
-  vpc_id = var.vpc_id
+resource "aws_security_group" "alb_sg" {
+  name        = "${var.project_name}-${var.environment}-alb-sg"
+  description = "Security Group for Application Load Balancer"
+  vpc_id      = var.vpc_id
 
   tags = {
-
-    Name = "${var.project_name}-${var.environment}-app-sg"
-
+    Name        = "${var.project_name}-${var.environment}-alb-sg"
     Environment = var.environment
-
   }
-
 }
 
 #################################################
-
-# SSH
-
+# ALB - HTTP INBOUND
 #################################################
 
-resource "aws_vpc_security_group_ingress_rule" "ssh" {
+resource "aws_vpc_security_group_ingress_rule" "alb_http" {
+  security_group_id = aws_security_group.alb_sg.id
 
-  security_group_id = aws_security_group.banking_app_sg.id
-
-  cidr_ipv4 = var.ssh_cidr
-
-  from_port = 22
-
-  to_port = 22
-
+  cidr_ipv4   = "0.0.0.0/0"
+  from_port   = 80
+  to_port     = 80
   ip_protocol = "tcp"
 
-  description = "SSH Access"
-
+  description = "Allow HTTP traffic to ALB"
 }
 
 #################################################
-
-# HTTP
-
+# ALB - OUTBOUND
 #################################################
 
-resource "aws_vpc_security_group_ingress_rule" "http" {
+resource "aws_vpc_security_group_egress_rule" "alb_outbound" {
+  security_group_id = aws_security_group.alb_sg.id
 
-  security_group_id = aws_security_group.banking_app_sg.id
-
-  cidr_ipv4 = "49.204.5.136/32"
-
-  from_port = 80
-
-  to_port = 80
-
-  ip_protocol = "tcp"
-
-  description = "HTTP Access"
-
-}
-
-#################################################
-
-# HTTPS
-
-#################################################
-
-resource "aws_vpc_security_group_ingress_rule" "https" {
-
-  security_group_id = aws_security_group.banking_app_sg.id
-
-  cidr_ipv4 = "49.204.5.136/32"
-
-  from_port = 443
-
-  to_port = 443
-
-  ip_protocol = "tcp"
-
-  description = "HTTPS Access"
-
-}
-
-#################################################
-
-# Outbound
-
-#################################################
-
-resource "aws_vpc_security_group_egress_rule" "all" {
-
-  security_group_id = aws_security_group.banking_app_sg.id
-
-  cidr_ipv4 = "0.0.0.0/0"
-
+  cidr_ipv4   = "0.0.0.0/0"
   ip_protocol = "-1"
 
-  description = "Allow All Outbound Traffic"
-
+  description = "Allow ALB outbound traffic"
 }
 
 
-resource "aws_vpc_security_group_ingress_rule" "app_port" {
-  security_group_id = aws_security_group.banking_app_sg.id
+#################################################
+# ECS TASK SECURITY GROUP
+#################################################
 
-  cidr_ipv4   = "49.204.5.136/32"
+resource "aws_security_group" "ecs_task_sg" {
+  name        = "${var.project_name}-${var.environment}-ecs-task-sg"
+  description = "Security Group for ECS Fargate Tasks"
+  vpc_id      = var.vpc_id
+
+  tags = {
+    Name        = "${var.project_name}-${var.environment}-ecs-task-sg"
+    Environment = var.environment
+  }
+}
+
+#################################################
+# ECS - ALLOW PORT 5000 ONLY FROM ALB
+#################################################
+
+resource "aws_vpc_security_group_ingress_rule" "ecs_from_alb" {
+  security_group_id = aws_security_group.ecs_task_sg.id
+
+  referenced_security_group_id = aws_security_group.alb_sg.id
+
   from_port   = 5000
   to_port     = 5000
   ip_protocol = "tcp"
 
-  description = "Allow traffic to ECS application port"
+  description = "Allow application traffic from ALB"
+}
+
+#################################################
+# ECS - OUTBOUND
+#################################################
+
+resource "aws_vpc_security_group_egress_rule" "ecs_outbound" {
+  security_group_id = aws_security_group.ecs_task_sg.id
+
+  cidr_ipv4   = "0.0.0.0/0"
+  ip_protocol = "-1"
+
+  description = "Allow ECS tasks outbound access"
 }
