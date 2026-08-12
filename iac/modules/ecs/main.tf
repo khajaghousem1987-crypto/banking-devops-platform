@@ -52,7 +52,7 @@ resource "aws_ecs_task_definition" "banking_task" {
 
       name = "banking-app"
 
-      image = "${var.repository_url}:latest"
+      image = "${var.repository_url}:${var.image_tag}"
 
       essential = true
 

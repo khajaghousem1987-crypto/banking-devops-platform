@@ -72,27 +72,22 @@ module "alb" {
 }
 
 module "ecs" {
-
   source = "./modules/ecs"
 
   project_name = var.project_name
-
-  environment = var.environment
+  environment  = var.environment
 
   private_subnet_ids = module.vpc.private_subnet_ids
-
-  security_group_id = module.security_group.ecs_security_group_id
+  security_group_id  = module.security_group.ecs_security_group_id
 
   execution_role_arn = module.iam.ecs_execution_role_arn
-
-  task_role_arn = module.iam.ecs_task_role_arn
+  task_role_arn      = module.iam.ecs_task_role_arn
 
   repository_url = module.ecr.repository_url
+  image_tag      = "bootstrap"
 
   target_group_arn = module.alb.target_group_arn
-
-  log_group_name = module.cloudwatch.log_group_name
-
+  log_group_name   = module.cloudwatch.log_group_name
 }
 
 

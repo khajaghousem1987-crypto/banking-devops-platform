@@ -3,6 +3,7 @@ resource "aws_ecr_repository" "banking_app" {
   name = "${var.project_name}-${var.environment}-app"
 
   image_tag_mutability = "IMMUTABLE"
+  force_delete         = true
 
   image_scanning_configuration {
 

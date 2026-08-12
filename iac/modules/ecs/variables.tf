@@ -69,4 +69,9 @@ variable "log_group_name" {
   type = string
 
 }
- 
+
+variable "image_tag" {
+  description = "Docker image tag used for initial ECS task definition"
+  type        = string
+  default     = "bootstrap"
+}
