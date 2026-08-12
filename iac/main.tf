@@ -83,12 +83,24 @@ module "ecs" {
   execution_role_arn = module.iam.ecs_execution_role_arn
   task_role_arn      = module.iam.ecs_task_role_arn
 
+  # Blue/Green infrastructure role
+  infrastructure_role_arn = module.iam.ecs_infrastructure_role_arn
+
   repository_url = module.ecr.repository_url
   image_tag      = "bootstrap"
 
+  # Current BLUE target group
   target_group_arn = module.alb.target_group_arn
-  log_group_name   = module.cloudwatch.log_group_name
-}
 
+  # Blue/Green configuration
+  green_target_group_arn       = module.alb.green_target_group_arn
+  production_listener_rule_arn = module.alb.production_listener_rule_arn
+
+  log_group_name = module.cloudwatch.log_group_name
+
+  depends_on = [
+    module.iam
+  ]
+}
 
 

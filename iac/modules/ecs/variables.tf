@@ -46,6 +46,11 @@ variable "task_role_arn" {
 
 }
 
+variable "infrastructure_role_arn" {
+  description = "ECS infrastructure role ARN for Blue/Green deployment"
+  type        = string
+}
+
 variable "repository_url" {
 
   description = "ECR Repository URL"
@@ -60,6 +65,16 @@ variable "target_group_arn" {
 
   type = string
 
+}
+
+variable "green_target_group_arn" {
+  description = "Green ALB Target Group ARN"
+  type        = string
+}
+
+variable "production_listener_rule_arn" {
+  description = "Production ALB Listener Rule ARN"
+  type        = string
 }
 
 variable "log_group_name" {

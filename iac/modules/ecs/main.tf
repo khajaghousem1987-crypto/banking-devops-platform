@@ -104,8 +104,9 @@ resource "aws_ecs_task_definition" "banking_task" {
 
 }
 
+
 #############################################
-# ECS Service
+# ECS Service - Native Blue/Green
 #############################################
 
 resource "aws_ecs_service" "banking_service" {
@@ -116,21 +117,43 @@ resource "aws_ecs_service" "banking_service" {
   desired_count = 1
   launch_type   = "FARGATE"
 
+  #############################################
+  # Native ECS Blue/Green Deployment
+  #############################################
+
+  deployment_configuration {
+    strategy             = "BLUE_GREEN"
+    bake_time_in_minutes = 5
+  }
+
   network_configuration {
     subnets          = var.private_subnet_ids
     security_groups  = [var.security_group_id]
     assign_public_ip = false
   }
 
+  #############################################
+  # ALB Blue/Green Configuration
+  #############################################
+
   load_balancer {
     target_group_arn = var.target_group_arn
     container_name   = "banking-app"
     container_port   = 5000
+
+    advanced_configuration {
+      alternate_target_group_arn = var.green_target_group_arn
+      production_listener_rule   = var.production_listener_rule_arn
+      role_arn                   = var.infrastructure_role_arn
+    }
   }
 
-  depends_on = [
-    aws_ecs_task_definition.banking_task
-  ]
+  # GitHub Actions manages new task-definition revisions
+  lifecycle {
+    ignore_changes = [
+      task_definition
+    ]
+  }
 
   tags = {
     Name        = "${var.project_name}-${var.environment}-service"
