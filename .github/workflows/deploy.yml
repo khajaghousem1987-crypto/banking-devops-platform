@@ -13,15 +13,10 @@ permissions:
 
 env:
   AWS_REGION: us-east-1
-
   ECR_REPOSITORY: banking-devops-dev-app
-
   ECS_CLUSTER: banking-devops-dev-cluster
-
   ECS_SERVICE: banking-devops-dev-service
-
   ECS_TASK_DEFINITION_FAMILY: banking-devops-dev
-
   CONTAINER_NAME: banking-app
 
 jobs:
@@ -36,14 +31,15 @@ jobs:
       # Checkout
       #####################################################
 
-      - uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
       #####################################################
       # Python
       #####################################################
 
-      - uses: actions/setup-python@v5
-
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
@@ -52,108 +48,105 @@ jobs:
       #####################################################
 
       - name: Install Python Packages
-
         run: |
-
           python -m pip install --upgrade pip
 
           pip install bandit
+          pip install pytest pytest-cov
 
           pip install -r app/requirements.txt
+
+      #####################################################
+      # UNIT TESTS + COVERAGE QUALITY GATE
+      #####################################################
+
+      - name: Unit Tests - Minimum 80 Percent Coverage
+        working-directory: app
+        run: |
+          pytest -v \
+            --cov=app \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            --cov-fail-under=80
 
       #####################################################
       # Bandit
       #####################################################
 
       - name: Run Bandit
-
         run: |
-
           mkdir -p reports
 
           bandit -r app \
-          -f txt \
-          -o reports/bandit-report.txt || true
+            -f txt \
+            -o reports/bandit-report.txt || true
 
-     #####################################################
-     # AWS Login
-     #####################################################
+      #####################################################
+      # AWS Login
+      #####################################################
 
-      - uses: aws-actions/configure-aws-credentials@v6
-
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v6
         with:
-
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-
           aws-region: ${{ env.AWS_REGION }}
-
 
       #####################################################
       # Terraform
       #####################################################
-           
-      - uses: hashicorp/setup-terraform@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Init
-
         working-directory: iac
-
         run: terraform init
 
       - name: Terraform Format
-
         working-directory: iac
-
         run: terraform fmt -check
 
       - name: Terraform Validate
-
         working-directory: iac
-
         run: terraform validate
 
       - name: Terraform Plan
-      
-
         working-directory: iac
-
         run: |
-
           terraform plan -out=tfplan
-
           terraform show -json tfplan > tfplan.json
+
+      #####################################################
+      # Terraform Plan Debug / Evidence
+      #####################################################
+
       - name: Pretty Print VPC
         working-directory: iac
         run: |
           python3 <<'EOF'
           import json
           import pprint
-      
+
           with open("tfplan.json", encoding="utf-8") as file:
               data = json.load(file)
-      
+
           for resource in data.get("resource_changes", []):
               if resource.get("type") == "aws_vpc":
                   pprint.pp(resource)
           EOF
-          
 
       #####################################################
       # Install OPA
       #####################################################
 
       - name: Install OPA
-
         run: |
-
           curl -L \
-          -o opa \
-          https://openpolicyagent.org/downloads/latest/opa_linux_amd64_static
+            -o opa \
+            https://openpolicyagent.org/downloads/latest/opa_linux_amd64_static
 
           chmod +x opa
-
           sudo mv opa /usr/local/bin
 
           opa version
@@ -163,35 +156,28 @@ jobs:
       #####################################################
 
       - name: Run OPA
-
         run: |
-
           chmod +x scripts/opa-check.sh
-
           ./scripts/opa-check.sh
 
       #####################################################
       # Login to ECR
       #####################################################
 
-      - id: login-ecr
-
+      - name: Login to Amazon ECR
+        id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
       #####################################################
       # Image Tag
       #####################################################
 
-      - id: image
-
+      - name: Generate Image URI
+        id: image
         env:
-
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-
         run: |
-
           IMAGE_URI=$REGISTRY/$ECR_REPOSITORY:${GITHUB_SHA}
-
           echo "image_uri=$IMAGE_URI" >> $GITHUB_OUTPUT
 
       #####################################################
@@ -199,33 +185,23 @@ jobs:
       #####################################################
 
       - name: Build Docker Image
-
         run: |
-
           docker build \
-          -t "${{ steps.image.outputs.image_uri }}" \
-          app/
+            -t "${{ steps.image.outputs.image_uri }}" \
+            app/
 
       #####################################################
-      # Trivy
+      # Trivy Security Gate
       #####################################################
 
       - name: Trivy Scan
-
         uses: aquasecurity/trivy-action@v0.36.0
-
         with:
-
           image-ref: ${{ steps.image.outputs.image_uri }}
-
           format: table
-
           output: reports/trivy-report.txt
-
           severity: HIGH,CRITICAL
-
           ignore-unfixed: true
-
           exit-code: 1
 
       #####################################################
@@ -233,100 +209,100 @@ jobs:
       #####################################################
 
       - name: Push Docker Image
-
         run: |
-
           docker push "${{ steps.image.outputs.image_uri }}"
 
       #####################################################
-      # Download Task Definition
+      # Download Current ECS Task Definition
       #####################################################
 
       - name: Download Task Definition
-
         run: |
-
           aws ecs describe-task-definition \
-          --task-definition $ECS_TASK_DEFINITION_FAMILY \
-          --query taskDefinition > task-definition.json
+            --task-definition $ECS_TASK_DEFINITION_FAMILY \
+            --query taskDefinition > task-definition.json
 
       #####################################################
-      # Remove AWS Fields
+      # Remove AWS Generated Fields
       #####################################################
 
       - name: Cleanup Task Definition
-
         run: |
-
           jq 'del(
-          .taskDefinitionArn,
-          .revision,
-          .status,
-          .registeredAt,
-          .registeredBy,
-          .compatibilities,
-          .requiresAttributes
+            .taskDefinitionArn,
+            .revision,
+            .status,
+            .registeredAt,
+            .registeredBy,
+            .compatibilities,
+            .requiresAttributes
           )' \
           task-definition.json > task-clean.json
 
       #####################################################
-      # Update Image
+      # Update Container Image
       #####################################################
 
-      - id: render
-
+      - name: Render ECS Task Definition
+        id: render
         uses: aws-actions/amazon-ecs-render-task-definition@v1
-
         with:
-
           task-definition: task-clean.json
-
-          container-name: banking-app
-
+          container-name: ${{ env.CONTAINER_NAME }}
           image: ${{ steps.image.outputs.image_uri }}
 
       #####################################################
-      # Deploy
+      # ECS BLUE/GREEN DEPLOYMENT
       #####################################################
 
-      - uses: aws-actions/amazon-ecs-deploy-task-definition@v2
-
+      - name: Deploy to Amazon ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
         with:
-
           cluster: ${{ env.ECS_CLUSTER }}
-
           service: ${{ env.ECS_SERVICE }}
-
           task-definition: ${{ steps.render.outputs.task-definition }}
-
           wait-for-service-stability: true
 
       #####################################################
-      # Upload Reports
+      # Upload Unit Test Coverage Evidence
       #####################################################
 
-      - uses: actions/upload-artifact@v4
-
+      - name: Upload Coverage Report
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
+          name: python-coverage-report
+          path: app/coverage.xml
+          if-no-files-found: warn
 
+      #####################################################
+      # Upload Bandit Evidence
+      #####################################################
+
+      - name: Upload Bandit Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
           name: bandit-report
-
           path: reports/bandit-report.txt
+          if-no-files-found: warn
 
-      - uses: actions/upload-artifact@v4
+      #####################################################
+      # Upload Trivy Evidence
+      #####################################################
 
+      - name: Upload Trivy Report
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-
           name: trivy-report
-
           path: reports/trivy-report.txt
+          if-no-files-found: warn
 
       #####################################################
       # Success
       #####################################################
 
       - name: Success
-
         run: |
-
           echo "Project-1 Deployment Completed Successfully."
