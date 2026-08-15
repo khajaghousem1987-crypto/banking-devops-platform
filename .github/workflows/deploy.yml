@@ -75,13 +75,9 @@ jobs:
 
       - name: Run Bandit Security Scan
         run: |
-          mkdir -p reports
-
           bandit -r app \
             -x app/tests,app/venv \
-            -ll \
-            -f txt \
-            -o reports/bandit-report.txt
+            -ll
 
       - name: Upload Bandit Report
         if: always()
