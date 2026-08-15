@@ -1,4 +1,8 @@
 .vs/*
+app/.coverage
+app/__pycache__/*
+app/tests/__pycache__/*
+app/venv/*
 .terraform/*
 .terraform
 .vs

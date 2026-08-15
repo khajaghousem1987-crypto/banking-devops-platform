@@ -70,16 +70,18 @@ jobs:
             --cov-fail-under=80
 
       #####################################################
-      # Bandit
+      # Bandit Security Gate
       #####################################################
 
-      - name: Run Bandit
+      - name: Run Bandit Security Scan
         run: |
           mkdir -p reports
 
           bandit -r app \
+            -x app/tests,app/venv \
+            -ll \
             -f txt \
-            -o reports/bandit-report.txt || true
+            -o reports/bandit-report.txt
 
       #####################################################
       # AWS Login
@@ -283,9 +285,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: bandit-report
+          name: bandit-security-report
           path: reports/bandit-report.txt
-          if-no-files-found: warn
 
       #####################################################
       # Upload Trivy Evidence
@@ -305,4 +306,4 @@ jobs:
 
       - name: Success
         run: |
-          echo "Project-1 Deployment Completed Successfully."
+          echo "Project-1 Deployment Completed Successfully." 
