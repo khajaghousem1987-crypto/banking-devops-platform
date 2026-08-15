@@ -1,4 +1,4 @@
-# 🏦 Banking DevOps Platform
+# 🏦 Banking DevOps Platform 
 
 An enterprise-style DevOps reference implementation demonstrating how a containerized banking application can be provisioned, secured, deployed, and operated on AWS using Infrastructure as Code and automated CI/CD.
 
