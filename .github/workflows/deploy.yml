@@ -75,14 +75,13 @@ jobs:
 
       - name: Run Bandit Security Scan
         run: |
-          bandit -r app -x app/tests,app/venv -ll
+          mkdir -p reports
 
-      - name: Upload Bandit Report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: bandit-security-report
-          path: reports/bandit-report.txt
+          bandit -r app \
+            -x app/tests,app/venv \
+            -ll \
+            -f txt \
+            -o reports/bandit-report.txt
 
       #####################################################
       # AWS Login
@@ -192,7 +191,7 @@ jobs:
           docker build \
             -t "${{ steps.image.outputs.image_uri }}" \
             app/
-            
+
       #####################################################
       # Trivy Security Gate
       #####################################################
@@ -289,9 +288,19 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: trivy-report
+          name: trivy-reportsss
           path: reports/trivy-report.txt
           if-no-files-found: warn
+
+      #####################################################
+      # Upload Bandit Reports
+      #####################################################
+      - name: Upload Bandit Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-security-report
+          path: reports/bandit-report.txt    
 
       #####################################################
       # Success
