@@ -147,7 +147,6 @@ resource "aws_ecs_service" "banking_service" {
       role_arn                   = var.infrastructure_role_arn
     }
   }
-
   # GitHub Actions manages new task-definition revisions
   lifecycle {
     ignore_changes = [
