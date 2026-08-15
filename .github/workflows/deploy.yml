@@ -83,6 +83,13 @@ jobs:
             -f txt \
             -o reports/bandit-report.txt
 
+      - name: Upload Bandit Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-security-report
+          path: reports/bandit-report.txt
+
       #####################################################
       # AWS Login
       #####################################################
