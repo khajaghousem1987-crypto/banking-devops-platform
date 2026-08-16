@@ -120,6 +120,21 @@ jobs:
           terraform show -json tfplan > tfplan.json
 
       #####################################################
+      # Checkov - Terraform Security Scan
+      #####################################################
+
+      - name: Install Checkov
+        run: |
+          pip install checkov
+
+      - name: Checkov IaC Security Scan
+        run: |
+          checkov \
+            -d iac \
+            --framework terraform \
+            --compact
+
+      #####################################################
       # Terraform Plan Debug / Evidence
       #####################################################
 
