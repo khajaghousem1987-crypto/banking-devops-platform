@@ -11,7 +11,8 @@ resource "aws_lb" "banking_alb" {
 
   subnets = var.public_subnet_ids
 
-  enable_deletion_protection = false
+  enable_deletion_protection = true
+  drop_invalid_header_fields = true
 
   tags = {
 
