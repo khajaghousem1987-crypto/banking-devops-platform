@@ -56,6 +56,8 @@ resource "aws_ecs_task_definition" "banking_task" {
 
       essential = true
 
+      readonlyRootFilesystem = true
+
       portMappings = [
 
         {

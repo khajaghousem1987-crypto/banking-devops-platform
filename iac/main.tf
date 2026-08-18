@@ -48,6 +48,8 @@ module "ecr" {
   project_name = var.project_name
 
   environment = var.environment
+  #kms_key_arn = module.kms_ecr.key_arn
+
 
 }
 
@@ -58,6 +60,7 @@ module "cloudwatch" {
   project_name = var.project_name
 
   environment = var.environment
+  kms_key_arn = module.kms_cloudwatch.key_arn
 
 }
 module "alb" {
@@ -68,7 +71,11 @@ module "alb" {
   vpc_id            = module.vpc.vpc_id
   public_subnet_ids = module.vpc.public_subnet_ids
 
-  security_group_id = module.security_group.alb_security_group_id
+  security_group_id  = module.security_group.alb_security_group_id
+  access_logs_bucket = module.alb_logs.bucket_name
+  depends_on = [
+    module.alb_logs
+  ]
 }
 
 module "ecs" {
@@ -102,5 +109,25 @@ module "ecs" {
     module.iam
   ]
 }
+module "kms_cloudwatch" {
+  source = "./modules/kms"
 
+  project_name = var.project_name
+  environment  = var.environment
+  purpose      = "cloudwatch"
+}
 
+# module "kms_ecr" {
+#   source = "./modules/kms"
+
+#   project_name = var.project_name
+#   environment  = var.environment
+#   purpose      = "ecr"
+# }
+
+module "alb_logs" {
+  source = "./modules/alb-logs"
+
+  project_name = var.project_name
+  environment  = var.environment
+}

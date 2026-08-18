@@ -11,11 +11,12 @@ resource "aws_ecr_repository" "banking_app" {
 
   }
 
-  encryption_configuration {
+  # encryption_configuration {
 
-    encryption_type = "AES256"
+  #   encryption_type = "KMS"
+  #   kms_key         = var.kms_key_arn
 
-  }
+  # }
 
   tags = {
 

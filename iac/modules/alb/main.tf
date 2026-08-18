@@ -13,7 +13,11 @@ resource "aws_lb" "banking_alb" {
 
   enable_deletion_protection = true
   drop_invalid_header_fields = true
-
+  access_logs {
+    bucket  = var.access_logs_bucket
+    prefix  = "alb"
+    enabled = true
+  }
   tags = {
 
     Name = "${var.project_name}-${var.environment}-alb"
@@ -21,6 +25,7 @@ resource "aws_lb" "banking_alb" {
     Environment = var.environment
 
   }
+
 
 }
 
@@ -103,7 +108,6 @@ resource "aws_lb_listener" "http" {
 #################################################
 
 resource "aws_lb_listener_rule" "production" {
-
   listener_arn = aws_lb_listener.http.arn
   priority     = 100
 
@@ -128,4 +132,10 @@ resource "aws_lb_listener_rule" "production" {
       values = ["/*"]
     }
   }
-} 
+
+  lifecycle {
+    ignore_changes = [
+      action
+    ]
+  }
+}
