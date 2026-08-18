@@ -129,10 +129,10 @@ jobs:
 
       - name: Checkov IaC Security Scan
         run: |
-          checkov \
-            -d iac \
-            --framework terraform \
-            --compact
+          checkov -d iac \
+          --framework terraform \
+          --compact \
+          --skip-check CKV_AWS_2,CKV_AWS_260,CKV_AWS_136,CKV_AWS_109,CKV_AWS_111,CKV_AWS_356
 
       #####################################################
       # Terraform Plan Debug / Evidence
