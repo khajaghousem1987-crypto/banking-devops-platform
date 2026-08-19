@@ -216,9 +216,6 @@ jobs:
           echo "Repository=${{ env.ECR_REPOSITORY }}"
           echo "Tag=${{ github.sha }}"
           echo "FULL IMAGE=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}"
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
 
       - name: Trivy Image Scan
         uses: aquasecurity/trivy-action@master
