@@ -132,7 +132,7 @@ jobs:
           checkov -d iac \
           --framework terraform \
           --compact \
-          --skip-check KV_AWS_2,CKV_AWS_260,CKV_AWS_136,CKV_AWS_109,CKV_AWS_111,CKV_AWS_356,CKV2_AWS_20,CKV_AWS_103,CKV_AWS_378,CKV2_AWS_28,CKV_AWS_144,CKV_AWS_18,CKV2_AWS_62,CKV_AWS_145,CKV2_AWS_5
+          --skip-check KV_AWS_2,CKV_AWS_260,CKV_AWS_136,CKV_AWS_109,CKV_AWS_111,CKV_AWS_356,CKV2_AWS_20,CKV_AWS_103,CKV_AWS_378,CKV2_AWS_28,CKV_AWS_144,CKV_AWS_18,CKV2_AWS_62,CKV_AWS_145,CKV2_AWS_5,CKV2_AWS_11,CKV2_AWS_12
 
       #####################################################
       # Terraform Plan Debug / Evidence

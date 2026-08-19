@@ -8,3 +8,4 @@ app/venv/*
 .vs
 iac/terraform.tfstate
 iac/.terraform.lock.hcl
+.checkov-venv/
