@@ -210,11 +210,20 @@ jobs:
       #####################################################
       # Trivy Security Gate
       #####################################################
+      - name: Debug Image Reference
+        run: |
+          echo "Registry=${{ steps.login-ecr.outputs.registry }}"
+          echo "Repository=${{ env.ECR_REPOSITORY }}"
+          echo "Tag=${{ github.sha }}"
+          echo "FULL IMAGE=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}"
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
 
       - name: Trivy Image Scan
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: '${{ env.ECR_REPOSITORY_URI }}:${{ github.sha }}'
+          image-ref: '${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}'
           format: 'table'
           exit-code: '1'
           ignore-unfixed: true
