@@ -85,3 +85,17 @@ resource "aws_vpc_security_group_egress_rule" "ecs_outbound" {
 
   description = "Allow ECS tasks outbound access"
 }
+#####################################################
+# Default VPC Security Group Hardening
+#####################################################
+
+resource "aws_default_security_group" "default" {
+  vpc_id = var.vpc_id
+
+  ingress = []
+  egress  = []
+
+  tags = {
+    Name = "${var.project_name}-${var.environment}-default-sg"
+  }
+}

@@ -25,7 +25,8 @@ data "aws_iam_policy_document" "kms" {
 
   # CloudWatch Logs permission - only for CloudWatch key
   dynamic "statement" {
-    for_each = var.purpose == "cloudwatch" ? [1] : []
+
+    for_each = var.log_group_name != null ? [1] : []
 
     content {
       sid    = "AllowCloudWatchLogs"
@@ -53,7 +54,7 @@ data "aws_iam_policy_document" "kms" {
         variable = "kms:EncryptionContext:aws:logs:arn"
 
         values = [
-          "arn:aws:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:log-group:/ecs/${var.project_name}-${var.environment}"
+          "arn:aws:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:log-group:${var.log_group_name}"
         ]
       }
     }

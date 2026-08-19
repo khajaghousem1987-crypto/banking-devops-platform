@@ -109,12 +109,15 @@ module "ecs" {
     module.iam
   ]
 }
+
 module "kms_cloudwatch" {
   source = "./modules/kms"
 
   project_name = var.project_name
   environment  = var.environment
   purpose      = "cloudwatch"
+
+  log_group_name = "/ecs/${var.project_name}-${var.environment}"
 }
 
 # module "kms_ecr" {
@@ -130,4 +133,31 @@ module "alb_logs" {
 
   project_name = var.project_name
   environment  = var.environment
+}
+
+#####################################################
+# KMS - VPC Flow Logs
+#####################################################
+
+module "kms_vpc_flow_logs" {
+  source = "./modules/kms"
+
+  project_name = var.project_name
+  environment  = var.environment
+  purpose      = "vpc-flow-logs"
+
+  log_group_name = "/aws/vpc-flow-logs/${var.project_name}-${var.environment}"
+}
+
+module "vpc_flow_logs" {
+  source = "./modules/vpc-flow-logs"
+
+  project_name = var.project_name
+  environment  = var.environment
+
+  vpc_id = module.vpc.vpc_id
+
+  kms_key_arn = module.kms_vpc_flow_logs.key_arn
+
+  retention_in_days = 365
 }
