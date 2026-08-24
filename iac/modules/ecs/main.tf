@@ -80,7 +80,7 @@ resource "aws_ecs_task_definition" "banking_task" {
 
           awslogs-group = var.log_group_name
 
-          awslogs-region = "us-east-1"
+          awslogs-region = var.aws_region
 
           awslogs-stream-prefix = "ecs"
 

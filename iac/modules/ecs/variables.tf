@@ -90,3 +90,8 @@ variable "image_tag" {
   type        = string
   default     = "latest"
 }
+
+variable "aws_region" {
+  description = "AWS region where ECS and CloudWatch Logs are deployed"
+  type        = string
+}
