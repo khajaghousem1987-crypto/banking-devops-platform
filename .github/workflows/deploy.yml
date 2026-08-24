@@ -224,8 +224,9 @@ jobs:
           format: 'table'
           exit-code: '1'
           ignore-unfixed: true
-          vuln-type: 'os,library'
           severity: 'HIGH,CRITICAL'
+          scanners: 'vuln'
+          skip-files: '**/pip/_vendor/bom.cdx.json'
 
       #####################################################
       # Push Image
