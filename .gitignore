@@ -1,0 +1,12 @@
+.DS_Store
+.vs/*
+app/.coverage
+app/__pycache__/*
+app/tests/__pycache__/*
+app/venv/*
+.terraform/*
+.terraform
+.vs
+iac/terraform.tfstate
+iac/.terraform.lock.hcl
+.checkov-venv/
