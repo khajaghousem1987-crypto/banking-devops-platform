@@ -31,3 +31,7 @@ output "eks_node_group_name" {
 output "eks_node_role_arn" {
   value = module.eks_node_group.node_role_arn
 }
+output "ecr_repository_url" {
+  description = "Project 2 ECR repository URL"
+  value       = module.ecr.repository_url
+}

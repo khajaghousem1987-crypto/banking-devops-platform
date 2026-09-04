@@ -57,3 +57,9 @@ module "eks_node_group" {
   min_size     = 1
   max_size     = 3
 }
+module "ecr" {
+  source = "./modules/ecr"
+
+  project_name = var.project_name
+  environment  = var.environment
+}
