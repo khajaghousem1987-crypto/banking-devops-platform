@@ -19,18 +19,21 @@ resource "aws_subnet" "public1" {
   cidr_block              = var.public_subnet_1_cidr
   availability_zone       = var.az1
   map_public_ip_on_launch = false
+
   tags = {
-    Name = "public-subnet-1"
+    Name                     = "public-subnet-1"
+    "kubernetes.io/role/elb" = "1"
   }
 }
-
 resource "aws_subnet" "public2" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = var.public_subnet_2_cidr
   availability_zone       = var.az2
   map_public_ip_on_launch = false
+
   tags = {
-    Name = "public-subnet-2"
+    Name                     = "public-subnet-2"
+    "kubernetes.io/role/elb" = "1"
   }
 }
 
@@ -38,8 +41,10 @@ resource "aws_subnet" "private1" {
   vpc_id            = aws_vpc.main.id
   cidr_block        = var.private_subnet_1_cidr
   availability_zone = var.az1
+
   tags = {
-    Name = "private-subnet-1"
+    Name                              = "private-subnet-1"
+    "kubernetes.io/role/internal-elb" = "1"
   }
 }
 
@@ -47,8 +52,10 @@ resource "aws_subnet" "private2" {
   vpc_id            = aws_vpc.main.id
   cidr_block        = var.private_subnet_2_cidr
   availability_zone = var.az2
+
   tags = {
-    Name = "private-subnet-2"
+    Name                              = "private-subnet-2"
+    "kubernetes.io/role/internal-elb" = "1"
   }
 }
 

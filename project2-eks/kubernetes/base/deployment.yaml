@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: banking-app
-          image: <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/<REPOSITORY>:bootstrap
+          image: 500788673290.dkr.ecr.us-east-1.amazonaws.com/banking-devops-dev-app:bootstrap
 
           ports:
             - containerPort: 5000
