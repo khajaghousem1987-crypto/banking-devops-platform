@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: banking-app
+  namespace: banking-dev
+
+spec:
+  replicas: 2
+
+  selector:
+    matchLabels:
+      app: banking-app
+
+  template:
+    metadata:
+      labels:
+        app: banking-app
+
+    spec:
+      containers:
+        - name: banking-app
+          image: <ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/<REPOSITORY>:bootstrap
+
+          ports:
+            - containerPort: 5000
+
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 5000
+            initialDelaySeconds: 20
+            periodSeconds: 20
