@@ -65,11 +65,17 @@ resource "aws_eks_node_group" "this" {
 
   depends_on = [
     aws_iam_role_policy_attachment.worker_node,
-    aws_iam_role_policy_attachment.ecr_read_only
+    aws_iam_role_policy_attachment.ecr_read_only,
+    aws_iam_role_policy_attachment.cni
   ]
 
   tags = {
     Name        = "${var.project_name}-${var.environment}-node-group"
     Environment = var.environment
   }
+}
+
+resource "aws_iam_role_policy_attachment" "cni" {
+  role       = aws_iam_role.node.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
 }

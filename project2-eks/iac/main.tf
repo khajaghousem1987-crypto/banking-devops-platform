@@ -51,7 +51,7 @@ module "eks_node_group" {
   cluster_name       = module.eks.cluster_name
   private_subnet_ids = local.shared_private_subnet_ids
 
-  instance_types = ["t3.medium"]
+  instance_types = ["t3.micro"]
 
   desired_size = 2
   min_size     = 1
