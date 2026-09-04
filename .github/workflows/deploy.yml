@@ -1,36 +1,330 @@
-# This is a basic workflow to help you get started with Actions
+name: Banking Application CI/CD
 
-name: CI
-
-# Controls when the workflow will run
 on:
-  # Triggers the workflow on push or pull request events but only for the "main" branch
   push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+    branches:
+      - main
+      - develop
 
-  # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: banking-devops-dev-app
+  ECS_CLUSTER: banking-devops-dev-cluster
+  ECS_SERVICE: banking-devops-dev-service
+  ECS_TASK_DEFINITION_FAMILY: banking-devops-dev
+  CONTAINER_NAME: banking-app
+
 jobs:
-  # This workflow contains a single job called "build"
-  build:
-    # The type of runner that the job will run on
+
+  deploy:
+
     runs-on: ubuntu-latest
 
-    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
 
-      # Runs a single command using the runners shell
-      - name: Run a one-line script
-        run: echo Hello, world!
+      #####################################################
+      # Checkout
+      #####################################################
 
-      # Runs a set of commands using the runners shell
-      - name: Run a multi-line script
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      #####################################################
+      # Python
+      #####################################################
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      #####################################################
+      # Install Dependencies
+      #####################################################
+
+      - name: Install Python Packages
         run: |
-          echo Add other actions to build,
-          echo test, and deploy your project.
+          python -m pip install --upgrade pip
+
+          pip install bandit
+          pip install pytest pytest-cov
+
+          pip install -r app/requirements.txt
+
+      #####################################################
+      # UNIT TESTS + COVERAGE QUALITY GATE
+      #####################################################
+
+      - name: Unit Tests - Minimum 80 Percent Coverage
+        working-directory: app
+        run: |
+          pytest -v \
+            --cov=app \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            --cov-fail-under=80
+
+      #####################################################
+      # Bandit Security Gate
+      #####################################################
+
+      - name: Run Bandit Security Scan
+        run: |
+          mkdir -p reports
+
+          bandit -r app \
+            -x app/tests,app/venv \
+            -ll \
+            -f txt \
+            -o reports/bandit-report.txt
+
+      #####################################################
+      # AWS Login
+      #####################################################
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      #####################################################
+      # Terraform
+      #####################################################
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        working-directory: iac
+        run: terraform init
+
+      - name: Terraform Format
+        working-directory: iac
+        run: terraform fmt -check
+
+      - name: Terraform Validate
+        working-directory: iac
+        run: terraform validate
+
+      - name: Terraform Plan
+        working-directory: iac
+        run: |
+          terraform plan -out=tfplan
+          terraform show -json tfplan > tfplan.json
+
+      #####################################################
+      # Checkov - Terraform Security Scan
+      #####################################################
+
+      - name: Install Checkov
+        run: |
+          pip install checkov
+
+      - name: Checkov IaC Security Scan
+        run: |
+          checkov -d iac \
+          --framework terraform \
+          --compact \
+          --skip-check KV_AWS_2,CKV_AWS_260,CKV_AWS_136,CKV_AWS_109,CKV_AWS_111,CKV_AWS_356,CKV2_AWS_20,CKV_AWS_103,CKV_AWS_378,CKV2_AWS_28,CKV_AWS_144,CKV_AWS_18,CKV2_AWS_62,CKV_AWS_145,CKV2_AWS_5,CKV2_AWS_11,CKV2_AWS_12,CKV_AWS_2
+
+      #####################################################
+      # Terraform Plan Debug / Evidence
+      #####################################################
+
+      - name: Pretty Print VPC
+        working-directory: iac
+        run: |
+          python3 <<'EOF'
+          import json
+          import pprint
+
+          with open("tfplan.json", encoding="utf-8") as file:
+              data = json.load(file)
+
+          for resource in data.get("resource_changes", []):
+              if resource.get("type") == "aws_vpc":
+                  pprint.pp(resource)
+          EOF
+
+      #####################################################
+      # Install OPA
+      #####################################################
+
+      - name: Install OPA
+        run: |
+          curl -L \
+            -o opa \
+            https://openpolicyagent.org/downloads/latest/opa_linux_amd64_static
+
+          chmod +x opa
+          sudo mv opa /usr/local/bin
+
+          opa version
+
+      #####################################################
+      # Run OPA Policies
+      #####################################################
+
+      - name: Run OPA
+        run: |
+          chmod +x scripts/opa-check.sh
+          ./scripts/opa-check.sh
+
+      #####################################################
+      # Login to ECR
+      #####################################################
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      #####################################################
+      # Image Tag
+      #####################################################
+
+      - name: Generate Image URI
+        id: image
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          IMAGE_URI=$REGISTRY/$ECR_REPOSITORY:${GITHUB_SHA}
+          echo "image_uri=$IMAGE_URI" >> $GITHUB_OUTPUT
+
+      #####################################################
+      # Docker Build
+      #####################################################
+
+      - name: Build Docker Image
+        run: |
+          docker build \
+            -t "${{ steps.image.outputs.image_uri }}" \
+            app/
+
+      #####################################################
+      # Trivy Security Gate
+      #####################################################
+      - name: Debug Image Reference
+        run: |
+          echo "Registry=${{ steps.login-ecr.outputs.registry }}"
+          echo "Repository=${{ env.ECR_REPOSITORY }}"
+          echo "Tag=${{ github.sha }}"
+          echo "FULL IMAGE=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}"
+
+      - name: Trivy Image Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          severity: 'HIGH,CRITICAL'
+          scanners: 'vuln'
+          skip-files: '**/pip/_vendor/bom.cdx.json'
+
+      #####################################################
+      # Push Image
+      #####################################################
+
+      - name: Push Docker Image
+        run: |
+          docker push "${{ steps.image.outputs.image_uri }}"
+
+      #####################################################
+      # Download Current ECS Task Definition
+      #####################################################
+
+      - name: Download Task Definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition $ECS_TASK_DEFINITION_FAMILY \
+            --query taskDefinition > task-definition.json
+
+      #####################################################
+      # Remove AWS Generated Fields
+      #####################################################
+
+      - name: Cleanup Task Definition
+        run: |
+          jq 'del(
+            .taskDefinitionArn,
+            .revision,
+            .status,
+            .registeredAt,
+            .registeredBy,
+            .compatibilities,
+            .requiresAttributes
+          )' \
+          task-definition.json > task-clean.json
+
+      #####################################################
+      # Update Container Image
+      #####################################################
+
+      - name: Render ECS Task Definition
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-clean.json
+          container-name: ${{ env.CONTAINER_NAME }}
+          image: ${{ steps.image.outputs.image_uri }}
+
+      #####################################################
+      # ECS BLUE/GREEN DEPLOYMENT
+      #####################################################
+
+      - name: Deploy to Amazon ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          cluster: ${{ env.ECS_CLUSTER }}
+          service: ${{ env.ECS_SERVICE }}
+          task-definition: ${{ steps.render.outputs.task-definition }}
+          wait-for-service-stability: true
+
+      #####################################################
+      # Upload Unit Test Coverage Evidence
+      #####################################################
+
+      - name: Upload Coverage Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-coverage-report
+          path: app/coverage.xml
+          if-no-files-found: warn
+
+      #####################################################
+      # Upload Trivy Evidence
+      #####################################################
+
+      - name: Upload Trivy Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-reportsss
+          path: reports/trivy-report.txt
+          if-no-files-found: warn
+
+      #####################################################
+      # Upload Bandit Reports
+      #####################################################
+      - name: Upload Bandit Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-security-report
+          path: reports/bandit-report.txt    
+
+      #####################################################
+      # Success
+      #####################################################
+
+      - name: Success
+        run: |
+          echo "Project-1 Deployment Completed Successfully." 
