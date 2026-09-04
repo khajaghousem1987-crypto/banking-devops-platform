@@ -53,8 +53,8 @@ module "eks_node_group" {
 
   instance_types = ["t3.micro"]
 
-  desired_size = 2
-  min_size     = 1
+  desired_size = 3
+  min_size     = 2
   max_size     = 3
 }
 module "ecr" {
