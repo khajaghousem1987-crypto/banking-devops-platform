@@ -1,0 +1,6 @@
+aws_region="us-east-1"
+project_name="banking-sre"
+environment="dev"
+eks_cluster_name="banking-eks-dev-cluster"
+vpc_id="vpc-03885f609bfdced80"
+alert_email=""

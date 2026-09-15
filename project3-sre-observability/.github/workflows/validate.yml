@@ -1,0 +1,12 @@
+name: Project3 Validate
+on: [pull_request]
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: hashicorp/setup-terraform@v3
+    - run: terraform -chdir=project3-sre-observability/terraform fmt -check -recursive
+    - run: terraform -chdir=project3-sre-observability/terraform init -backend=false
+    - run: terraform -chdir=project3-sre-observability/terraform validate
+    - run: python -m py_compile project3-sre-observability/app/app.py

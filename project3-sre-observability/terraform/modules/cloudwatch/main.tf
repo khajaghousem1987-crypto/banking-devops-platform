@@ -1,0 +1,3 @@
+resource "aws_cloudwatch_log_group" "application" { name="/banking/${var.name_prefix}/application" retention_in_days=var.log_retention_days }
+resource "aws_cloudwatch_log_metric_filter" "errors" { name="${var.name_prefix}-errors" pattern="ERROR" log_group_name=aws_cloudwatch_log_group.application.name metric_transformation { name="ApplicationErrors" namespace="Banking/SRE" value="1" } }
+resource "aws_cloudwatch_metric_alarm" "errors" { alarm_name="${var.name_prefix}-application-errors" comparison_operator="GreaterThanOrEqualToThreshold" evaluation_periods=1 metric_name="ApplicationErrors" namespace="Banking/SRE" period=60 statistic="Sum" threshold=5 treat_missing_data="notBreaching" alarm_actions=[var.sns_topic_arn] }

@@ -1,0 +1,7 @@
+groups:
+- name: infrastructure
+  rules:
+  - alert: KubernetesNodeNotReady
+    expr: kube_node_status_condition{condition="Ready",status="true"} == 0
+    for: 5m
+    labels: {severity: critical}
