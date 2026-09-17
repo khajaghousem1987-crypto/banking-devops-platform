@@ -1,0 +1,15 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Sid": "ProtectAWSConfig",
+        "Effect": "Deny",
+        "Action": [
+          "config:DeleteConfigurationRecorder",
+          "config:DeleteDeliveryChannel",
+          "config:StopConfigurationRecorder"
+        ],
+        "Resource": "*"
+      }
+    ]
+  }
