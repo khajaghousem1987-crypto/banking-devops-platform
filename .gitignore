@@ -1,17 +1,9 @@
-# Terraform state
+# Terraform runtime/state
+**/.terraform/
 *.tfstate
 *.tfstate.*
 *.tfplan
-
-# Terraform variables
-*.tfvars
-*.tfvars.json
-
-# Allow examples
-!*.tfvars.example
-
-# Terraform working directory
-**/.terraform/
+tfplan
 
 # Python
 **/venv/
