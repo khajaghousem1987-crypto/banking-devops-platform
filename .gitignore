@@ -1,12 +1,38 @@
-.DS_Store
-.vs/*
-app/.coverage
-app/__pycache__/*
-app/tests/__pycache__/*
-app/venv/*
-.terraform/*
-.terraform
-.vs
-iac/terraform.tfstate
-iac/.terraform.lock.hcl
+# Python virtual environments
+venv/
+.venv/
+**/venv/
+**/.venv/
 .checkov-venv/
+
+# Python cache
+__pycache__/
+**/__pycache__/
+*.py[cod]
+
+# Test / coverage artifacts
+.coverage
+**/.coverage
+htmlcov/
+.pytest_cache/
+
+# Terraform runtime
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+
+# Terraform variables / secrets
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+
+# OS / IDE
+.DS_Store
+.vscode/
+.idea/
+
+# Environment files
+.env
+.env.*
