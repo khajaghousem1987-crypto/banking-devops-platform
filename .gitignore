@@ -1,38 +1,31 @@
-# Python virtual environments
-venv/
-.venv/
-**/venv/
-**/.venv/
-.checkov-venv/
-
-# Python cache
-__pycache__/
-**/__pycache__/
-*.py[cod]
-
-# Test / coverage artifacts
-.coverage
-**/.coverage
-htmlcov/
-.pytest_cache/
-
-# Terraform runtime
-**/.terraform/
+# Terraform state
 *.tfstate
 *.tfstate.*
 *.tfplan
-tfplan
 
-# Terraform variables / secrets
+# Terraform variables
 *.tfvars
 *.tfvars.json
+
+# Allow examples
 !*.tfvars.example
 
-# OS / IDE
-.DS_Store
-.vscode/
-.idea/
+# Terraform working directory
+**/.terraform/
 
-# Environment files
+# Python
+**/venv/
+**/.venv/
+**/__pycache__/
+*.py[cod]
+.coverage
+**/.coverage
+.pytest_cache/
+.checkov-venv/
+
+# Environment / OS / IDE
 .env
 .env.*
+.DS_Store
+.vscode/
+.idea/ 
