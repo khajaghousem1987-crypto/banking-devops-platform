@@ -29,3 +29,6 @@ output "uat_ou_id" {
 output "production_ou_id" {
   value = module.production_ou.id
 }
+output "development_security_scp_id" {
+  value = module.development_security_scp.policy_id
+}

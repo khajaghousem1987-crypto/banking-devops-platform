@@ -1,0 +1,24 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Sid": "ProtectCloudTrail",
+        "Effect": "Deny",
+        "Action": [
+          "cloudtrail:StopLogging",
+          "cloudtrail:DeleteTrail"
+        ],
+        "Resource": "*"
+      },
+      {
+        "Sid": "ProtectAWSConfig",
+        "Effect": "Deny",
+        "Action": [
+          "config:DeleteConfigurationRecorder",
+          "config:DeleteDeliveryChannel",
+          "config:StopConfigurationRecorder"
+        ],
+        "Resource": "*"
+      }
+    ]
+  }
