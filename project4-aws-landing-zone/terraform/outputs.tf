@@ -32,3 +32,30 @@ output "production_ou_id" {
 output "development_security_scp_id" {
   value = module.development_security_scp.policy_id
 }
+output "cloudtrail_name" {
+  value = module.logging.trail_name
+}
+
+output "cloudtrail_bucket_name" {
+  value = module.logging.bucket_name
+}
+
+output "config_bucket_name" {
+  value = module.config.bucket_name
+}
+
+output "config_recorder_name" {
+  value = module.config.recorder_name
+}
+
+output "guardduty_detector_id" {
+  value = module.security.guardduty_detector_id
+}
+
+output "security_hub_enabled" {
+  value = module.security.security_hub_enabled
+}
+
+output "budget_name" {
+  value = module.budget.budget_name
+}
