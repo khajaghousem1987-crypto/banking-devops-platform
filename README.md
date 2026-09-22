@@ -1,996 +1,1031 @@
-# Project 4 --- Enterprise AWS Landing Zone & Multi-Account Governance
+# 🏦 Banking DevOps Platform
 
-## Overview
+An enterprise-style DevOps reference implementation demonstrating how a containerized banking application can be provisioned, secured, deployed, and operated on AWS using Infrastructure as Code and automated CI/CD.
 
-This project implements an enterprise-style AWS Landing Zone foundation
-using AWS Organizations, Organizational Units (OUs), Service Control
-Policies (SCPs), AWS CloudTrail, Amazon S3, AWS Config, Amazon
-GuardDuty, AWS Security Hub, AWS Budgets, and Terraform.
+The project demonstrates practical DevOps and DevSecOps engineering patterns including:
 
-The goal is to establish a governed AWS foundation before workload teams
-deploy applications. The implementation is intentionally safe for a lab:
-the AWS Organization and OU hierarchy are real, but unnecessary member
-accounts are not created. The design can later evolve into dedicated
-Management, Log Archive, Security/Audit, Shared Services, Development,
-UAT, and Production accounts.
+- Infrastructure as Code using Terraform
+- Modular AWS infrastructure
+- Containerization with Docker
+- Amazon ECR image management
+- Amazon ECS Fargate
+- Application Load Balancer
+- Native ECS Blue/Green deployments
+- GitHub Actions CI/CD
+- Trivy container security scanning
+- OPA policy validation
+- IAM role-based access
+- CloudWatch logging and monitoring
+- Private workload networking
 
-> **Safety:** AWS Organizations and SCP changes can have
-> organization-wide impact. Always review `terraform plan` before
-> applying. Test restrictive SCPs against a non-production OU before
-> wider rollout.
+---
 
-------------------------------------------------------------------------
+# 1. Project Overview
 
-## Project Outcome
+The Banking DevOps Platform is designed as an enterprise-style deployment architecture for running containerized applications on AWS.
 
-The completed implementation provides:
+The platform separates:
 
--   AWS Organization with all features enabled.
--   Security, Infrastructure, and Workloads OUs.
--   Development, UAT, and Production child OUs.
--   Terraform-managed OU hierarchy.
--   SCP guardrails with controlled rollout to Development.
--   Multi-region CloudTrail.
--   Dedicated encrypted, private, versioned S3 audit bucket.
--   AWS Config configuration recording and S3 delivery.
--   GuardDuty threat detection.
--   Security Hub security posture management.
--   Monthly AWS Budget.
--   Terraform-based deployment, outputs, validation, and drift
-    detection.
+- Application source code
+- Infrastructure code
+- Security policies
+- CI/CD automation
+- Runtime infrastructure
 
-## Architecture
+Infrastructure is provisioned using Terraform while application deployments are performed through GitHub Actions.
 
-``` text
-AWS Organization
-|
-+-- Security OU
-|
-+-- Infrastructure OU
-|
-+-- Workloads OU
-    +-- Development OU
-    +-- UAT OU
-    +-- Production OU
+The current application workload runs on **Amazon ECS Fargate** behind an **Application Load Balancer (ALB)**.
 
-Governance / Security Baseline
-|
-+-- Service Control Policies
-|
-+-- AWS CloudTrail
-|   +-- Dedicated S3 audit bucket
-|       +-- Public access blocked
-|       +-- Encryption
-|       +-- Versioning
-|       +-- TLS enforcement
-|
-+-- AWS Config
-|   +-- Configuration Recorder
-|   +-- Delivery Channel
-|   +-- Dedicated S3 bucket
-|
-+-- Amazon GuardDuty
-|
-+-- AWS Security Hub
-|
-+-- AWS Budgets
+Application releases use **ECS native Blue/Green deployment strategy**, allowing a new application revision to be validated before replacing the existing production revision.
+
+---
+
+# 2. Architecture
+
+```text
+                        Developer
+                            │
+                            │ Git Push
+                            ▼
+                    GitHub Repository
+                            │
+                            ▼
+                    GitHub Actions
+                            │
+              ┌─────────────┼─────────────┐
+              │             │             │
+              ▼             ▼             ▼
+            Build         Trivy          OPA
+          Docker Image    Scan        Policy Check
+              │
+              ▼
+         Amazon ECR
+              │
+              ▼
+      ECS Task Definition
+              │
+              ▼
+       Amazon ECS Fargate
+              │
+        Blue/Green Deployment
+              │
+        ┌─────┴─────┐
+        │           │
+        ▼           ▼
+   Target Group A  Target Group B
+        │           │
+        └─────┬─────┘
+              │
+              ▼
+     Application Load Balancer
+              │
+              ▼
+           Users
 ```
 
-### Production evolution
+---
 
-A production organization would normally evolve toward:
+# 3. AWS Architecture
 
-``` text
-Management Account
-|
-+-- Security OU
-|   +-- Log Archive Account
-|   +-- Security / Audit Account
-|
-+-- Infrastructure OU
-|   +-- Shared Services Account
-|
-+-- Workloads OU
-    +-- Development Account(s)
-    +-- UAT Account(s)
-    +-- Production Account(s)
+```text
+Internet
+   │
+   ▼
+Application Load Balancer
+Public Subnets
+   │
+   ▼
+ALB Listener : HTTP/80
+   │
+   ▼
+Production Listener Rule
+   │
+   ├──────── Target Group A
+   │
+   └──────── Target Group B
+                   │
+                   ▼
+              ECS Fargate
+             Private Subnets
+                   │
+                   ▼
+              Application
+                Port 5000
 ```
 
-CloudTrail and Config data can then be centralized in the Log Archive
-account, while GuardDuty and Security Hub administration can be
-delegated to a Security account.
+The ECS tasks do not require public IP addresses.
 
-------------------------------------------------------------------------
+Application traffic follows:
 
-## Repository Structure
+```text
+Internet
+   ↓
+ALB : 80
+   ↓
+Target Group
+   ↓
+ECS Task : 5000
+```
 
-``` text
-project4-aws-landing-zone/
-├── README.md
-├── .gitignore
+The ECS security group allows application traffic on port `5000` **only from the ALB security group**.
+
+---
+
+# 4. Repository Structure
+
+```text
+banking-devops-platform/
+│
+├── .github/
+│   └── workflows/
+│       └── deploy.yml
+│
+├── app/
+│   └── Application source code
+│
+├── iac/
+│   ├── main.tf
+│   ├── variables.tf
+│   ├── outputs.tf
+│   ├── provider.tf
+│   ├── backend.tf
+│   │
+│   └── modules/
+│       ├── vpc/
+│       ├── security-group/
+│       ├── iam/
+│       ├── ecr/
+│       ├── ecs/
+│       ├── alb/
+│       └── cloudwatch/
+│
 ├── policies/
-│   └── scp/
-│       ├── deny-disable-security-services.json
-│       ├── prevent-org-exit.json
-│       ├── protect-cloudtrail.json
-│       └── protect-config.json
+│   └── mandatory-tags.rego
+│
 ├── scripts/
-│   ├── validate-prerequisites.sh
-│   ├── validate-organization.sh
-│   ├── validate-security.sh
-│   └── validate-logging.sh
-├── docs/
-│   ├── ARCHITECTURE.md
-│   ├── ACCOUNT-STRATEGY.md
-│   ├── SCP-STRATEGY.md
-│   ├── SECURITY-BASELINE.md
-│   ├── LOGGING-STRATEGY.md
-│   └── OPERATIONS-RUNBOOK.md
-├── evidence/
-│   └── README.md
-└── terraform/
-    ├── versions.tf
-    ├── provider.tf
-    ├── backend.tf
-    ├── data.tf
-    ├── variables.tf
-    ├── terraform.tfvars.example
-    ├── organization.tf
-    ├── scp.tf
-    ├── security-baseline.tf
-    ├── outputs.tf
-    └── modules/
-        ├── organizational-unit/
-        ├── scp/
-        ├── logging/
-        ├── config/
-        ├── security/
-        └── budget/
+│   └── Automation / validation scripts
+│
+├── .gitignore
+└── README.md
 ```
 
-------------------------------------------------------------------------
+---
 
-## Service Responsibilities
+# 5. Technology Stack
 
-### AWS Organizations and OUs
+| Layer | Technology |
+|---|---|
+| Cloud Platform | AWS |
+| Infrastructure as Code | Terraform |
+| Container Runtime | Docker |
+| Container Registry | Amazon ECR |
+| Container Orchestration | Amazon ECS |
+| Compute | AWS Fargate |
+| Load Balancing | Application Load Balancer |
+| Networking | Amazon VPC |
+| Identity & Access | AWS IAM |
+| Logging / Monitoring | Amazon CloudWatch |
+| CI/CD | GitHub Actions |
+| Security Scanning | Trivy |
+| Policy as Code | Open Policy Agent |
+| Deployment Strategy | ECS Blue/Green |
 
-AWS Organizations supplies the enterprise hierarchy. OUs group accounts
-by purpose so governance can be applied consistently instead of account
-by account.
+---
 
-Implemented hierarchy:
+# 6. Infrastructure Components
 
-``` text
-Root
-├── Security
-├── Infrastructure
-└── Workloads
-    ├── Development
-    ├── UAT
-    └── Production
+## VPC
+
+The Terraform VPC module provisions the network foundation.
+
+```text
+VPC
+│
+├── Public Subnet 1
+├── Public Subnet 2
+│
+├── Private Subnet 1
+├── Private Subnet 2
+│
+├── Internet Gateway
+├── NAT Gateway
+│
+├── Public Route Table
+└── Private Route Table
 ```
 
-### Service Control Policies
+The Application Load Balancer is deployed in public subnets.
 
-SCPs establish organization-level permission boundaries. They do not
-grant permissions. An IAM principal still needs IAM authorization, and
-the SCP defines the maximum permissions available to accounts under its
-target.
+ECS Fargate workloads are deployed in private subnets.
 
-This project starts with a security-service protection policy and
-attaches it to Development first to reduce blast radius.
+This prevents application containers from being directly exposed to the internet.
 
-### CloudTrail
+---
 
-CloudTrail provides AWS API audit history. The implementation enables a
-multi-region trail, global service events, management events, and
-log-file validation.
+# 7. Security Groups
 
-### Amazon S3
+Two primary security groups are used.
 
-Dedicated S3 buckets store CloudTrail and Config data. Public access is
-blocked, server-side encryption and versioning are enabled, and insecure
-transport is denied.
+### ALB Security Group
 
-### AWS Config
+Allows inbound:
 
-AWS Config records supported AWS resource configuration and
-configuration changes. The project provisions the IAM role, recorder,
-delivery channel, S3 destination, and recorder status.
-
-### GuardDuty and Security Hub
-
-GuardDuty provides managed threat detection. Security Hub provides
-centralized security findings and posture visibility.
-
-### AWS Budgets
-
-The budget module adds basic FinOps governance with a monthly cost limit
-and optional email notifications.
-
-------------------------------------------------------------------------
-
-## Prerequisites
-
-Install:
-
--   AWS CLI v2
--   Terraform
--   Git
--   jq
-
-Verify:
-
-``` bash
-aws --version
-terraform version
-git --version
-jq --version
+```text
+Internet
+   │
+   │ TCP/80
+   ▼
+ALB
 ```
 
-Confirm AWS authentication:
+### ECS Task Security Group
 
-``` bash
-aws sts get-caller-identity
+Allows:
+
+```text
+ALB Security Group
+        │
+        │ TCP/5000
+        ▼
+ECS Tasks
 ```
 
-Confirm the intended region:
+Direct public access to ECS application port `5000` is not permitted.
 
-``` bash
-aws configure get region
+---
+
+# 8. IAM Architecture
+
+The project separates IAM responsibilities across multiple ECS roles.
+
+### ECS Execution Role
+
+Used by ECS to perform platform-level operations such as:
+
+- Pull container images from ECR
+- Write container logs to CloudWatch
+
+### ECS Task Role
+
+Used by the running application when AWS API access is required.
+
+This separates application permissions from ECS platform permissions.
+
+### ECS Infrastructure Role
+
+Used by ECS for infrastructure operations associated with native Blue/Green deployments.
+
+The role uses the AWS managed policy:
+
+```text
+AmazonECSInfrastructureRolePolicyForLoadBalancers
 ```
 
-This implementation uses `us-east-1`.
+The role is supplied to the ECS service through:
 
-**Never continue until `aws sts get-caller-identity` shows the intended
-AWS account.**
-
-------------------------------------------------------------------------
-
-## Clone and Start
-
-``` bash
-git clone <YOUR_REPOSITORY_URL>
-cd banking-devops-platform/project4-aws-landing-zone
+```text
+advanced_configuration.role_arn
 ```
 
-If validation scripts are included:
+This allows ECS to manage the load-balancer resources required during Blue/Green deployment.
 
-``` bash
-chmod +x scripts/*.sh
-./scripts/validate-prerequisites.sh
+---
+
+# 9. Amazon ECR
+
+Application container images are stored in Amazon Elastic Container Registry.
+
+Typical image flow:
+
+```text
+Application Code
+      ↓
+docker build
+      ↓
+Security Scan
+      ↓
+docker push
+      ↓
+Amazon ECR
+      ↓
+ECS Task Definition
 ```
 
-Check whether the account is already in an AWS Organization:
+ECR lifecycle management is configured through Terraform to control old image retention.
 
-``` bash
-aws organizations describe-organization
+---
+
+# 10. Amazon ECS Fargate
+
+The application runs using AWS Fargate.
+
+Current container configuration:
+
+```text
+CPU             : 256
+Memory          : 512 MB
+Container Port  : 5000
+Network Mode    : awsvpc
+Launch Type     : FARGATE
+Public IP       : Disabled
 ```
 
-If an Organization exists, inspect it:
+Container logging uses:
 
-``` bash
-aws organizations list-roots
-aws organizations list-accounts
+```text
+awslogs
 ```
 
-If the account is not in an Organization, AWS returns
-`AWSOrganizationsNotInUseException`.
+and application logs are forwarded to Amazon CloudWatch.
 
-For an authorized lab/management account only, create an Organization:
+---
 
-``` bash
-aws organizations create-organization   --feature-set ALL
+# 11. Application Load Balancer
+
+The Application Load Balancer provides the public entry point for the application.
+
+```text
+Client
+   ↓
+ALB HTTP : 80
+   ↓
+Listener Rule
+   ↓
+ECS Target Group
 ```
 
-Verify:
+The listener contains a production routing rule for application traffic.
 
-``` bash
-aws organizations describe-organization
+A default fixed response is used when no application routing rule matches.
+
+---
+
+# 12. Blue/Green Deployment
+
+The ECS service uses the native:
+
+```text
+BLUE_GREEN
 ```
 
-Do not create an Organization blindly in an enterprise account. Confirm
-the organization design and management-account ownership first.
+deployment strategy.
 
-------------------------------------------------------------------------
+Two target groups are configured for the ECS service.
 
-## Discover the Root
+```text
+Current Production
+        │
+        ▼
+Target Group A
+        │
+        ▼
+Current ECS Revision
 
-``` bash
-aws organizations list-roots
+
+New Deployment
+        │
+        ▼
+Target Group B
+        │
+        ▼
+New ECS Revision
 ```
 
-Export the root ID:
+## Deployment Lifecycle
 
-``` bash
-export ROOT_ID=$(aws organizations list-roots   --query 'Roots[0].Id'   --output text)
+When a new deployment starts:
 
-echo "$ROOT_ID"
+```text
+Current Production Revision
+          │
+          │
+          │ New deployment
+          ▼
+Create Green Revision
+          │
+          ▼
+Start Green ECS Tasks
+          │
+          ▼
+Register Green Targets
+          │
+          ▼
+ALB Health Checks
+          │
+       Healthy?
+          │
+          ▼
+Shift Production Traffic
+     Blue ───────► Green
+          │
+          ▼
+       Bake Time
+          │
+          ▼
+Terminate Old Blue Tasks
+          │
+          ▼
+Deployment Complete
 ```
 
-The value looks like `r-xxxx`.
+The project currently uses a **5-minute bake time**.
 
-------------------------------------------------------------------------
+During bake time, the new revision serves production traffic while the previous revision remains available temporarily.
 
-## Terraform Configuration
+After successful completion, ECS terminates the previous Blue tasks.
 
-``` bash
-cd terraform
-cp terraform.tfvars.example terraform.tfvars
-```
+---
+
+# 13. Understanding Blue and Green
+
+Blue and Green should be understood as **deployment roles**, rather than permanent application versions.
 
 Example:
 
-``` hcl
-project_name = "banking-landing-zone"
-home_region  = "us-east-1"
-
-cloudtrail_bucket_name = "REPLACE-WITH-GLOBALLY-UNIQUE-CLOUDTRAIL-BUCKET"
-config_bucket_name      = "REPLACE-WITH-GLOBALLY-UNIQUE-CONFIG-BUCKET"
-
-budget_limit_usd = 100
-budget_email     = ""
+```text
+Version 1
+BLUE
+Production
 ```
 
-S3 bucket names are globally unique. A practical naming convention is:
+Deploy Version 2:
 
-``` text
-<project>-cloudtrail-<account-id>
-<project>-config-<account-id>
+```text
+v1 = BLUE
+v2 = GREEN
+
+       ↓
+
+Traffic Shift
+
+       ↓
+
+v2 = Production
+v1 = Terminated
 ```
 
-Do not commit environment-specific secrets or sensitive values in
-`terraform.tfvars`.
+During the next deployment:
 
-------------------------------------------------------------------------
+```text
+Current v2 = Existing Production
+New v3     = New Deployment Revision
+```
 
-## Terraform Workflow
+The target groups participate alternately in subsequent deployments.
 
-Format:
+Therefore, application versions should not be permanently associated with the words Blue or Green.
 
-``` bash
+---
+
+# 14. CI/CD Pipeline
+
+Application deployment is automated through GitHub Actions.
+
+High-level pipeline:
+
+```text
+Developer
+    │
+    ▼
+Git Push
+    │
+    ▼
+GitHub Actions
+    │
+    ├── Checkout Source
+    │
+    ├── Configure AWS Credentials
+    │
+    ├── Authenticate to ECR
+    │
+    ├── Build Docker Image
+    │
+    ├── Trivy Security Scan
+    │
+    ├── Push Image to ECR
+    │
+    ├── Download ECS Task Definition
+    │
+    ├── Render New Image
+    │
+    ├── Register Task Definition
+    │
+    └── Deploy to ECS
+              │
+              ▼
+        Blue/Green Deployment
+              │
+              ▼
+         Production
+```
+
+The pipeline waits for ECS deployment completion before reporting success.
+
+---
+
+# 15. DevSecOps Controls
+
+Security checks are integrated into the delivery workflow.
+
+## Trivy
+
+Trivy is used to scan container images for known vulnerabilities.
+
+```text
+Docker Image
+     ↓
+Trivy Scan
+     ↓
+Security Validation
+     ↓
+Push / Deployment
+```
+
+This introduces container vulnerability scanning before production deployment.
+
+## Open Policy Agent
+
+OPA is used for Infrastructure-as-Code policy validation.
+
+Example governance requirements include mandatory resource tags such as:
+
+```text
+Environment
+Owner
+Project
+ManagedBy
+```
+
+This demonstrates **Policy as Code**, where infrastructure governance rules can be validated automatically rather than relying exclusively on manual review.
+
+---
+
+# 16. CloudWatch
+
+CloudWatch provides centralized logging and container monitoring.
+
+The ECS cluster has:
+
+```text
+Container Insights = Enabled
+```
+
+Container logs are forwarded using the ECS `awslogs` log driver.
+
+Operational visibility therefore follows:
+
+```text
+Application
+     ↓
+ECS Container
+     ↓
+awslogs
+     ↓
+CloudWatch Logs
+```
+
+---
+
+# 17. Prerequisites
+
+Before deploying the project, install:
+
+```text
+Git
+Terraform
+AWS CLI
+Docker
+```
+
+You also require:
+
+- AWS Account
+- Appropriate AWS IAM permissions
+- GitHub repository access
+- AWS credentials/configuration
+- Docker runtime
+
+Verify:
+
+```bash
+aws --version
+terraform version
+docker --version
+git --version
+```
+
+---
+
+# 18. AWS Authentication
+
+Configure AWS CLI credentials:
+
+```bash
+aws configure
+```
+
+Verify the authenticated identity:
+
+```bash
+aws sts get-caller-identity
+```
+
+Always verify the account and region before provisioning infrastructure.
+
+The current implementation uses:
+
+```text
+Region: us-east-1
+```
+
+---
+
+# 19. Clone Repository
+
+```bash
+git clone <repository-url>
+
+cd banking-devops-platform
+```
+
+Switch to the appropriate development branch:
+
+```bash
+git checkout develop
+```
+
+---
+
+# 20. Provision Infrastructure
+
+Navigate to the Terraform directory:
+
+```bash
+cd iac
+```
+
+Format the Terraform configuration:
+
+```bash
 terraform fmt -recursive
 ```
 
-Initialize:
+Initialize Terraform:
 
-``` bash
+```bash
 terraform init
 ```
 
 Validate:
 
-``` bash
+```bash
 terraform validate
 ```
 
-Expected:
+Generate an execution plan:
 
-``` text
-Success! The configuration is valid.
-```
-
-Plan:
-
-``` bash
+```bash
 terraform plan
 ```
 
-For controlled deployments, save the plan:
+Review the plan carefully.
 
-``` bash
-terraform plan -out=tfplan
-terraform show tfplan
-terraform apply tfplan
-```
+Provision infrastructure:
 
-A saved plan ensures the reviewed plan is the plan being applied.
-
-------------------------------------------------------------------------
-
-## OU Deployment and Validation
-
-Terraform creates:
-
-``` text
-Root
-├── Security
-├── Infrastructure
-└── Workloads
-    ├── Development
-    ├── UAT
-    └── Production
-```
-
-Validate top-level OUs:
-
-``` bash
-ROOT_ID=$(aws organizations list-roots   --query 'Roots[0].Id'   --output text)
-
-aws organizations list-organizational-units-for-parent   --parent-id "$ROOT_ID"   --query 'OrganizationalUnits[*].[Name,Id]'   --output table
-```
-
-Get the Workloads OU:
-
-``` bash
-WORKLOADS_OU=$(terraform output -raw workloads_ou_id)
-echo "$WORKLOADS_OU"
-```
-
-Validate child OUs:
-
-``` bash
-aws organizations list-organizational-units-for-parent   --parent-id "$WORKLOADS_OU"   --query 'OrganizationalUnits[*].[Name,Id]'   --output table
-```
-
-Expected logical result: Development, UAT, and Production.
-
-------------------------------------------------------------------------
-
-## Enable SCPs
-
-Check whether SCPs are enabled:
-
-``` bash
-aws organizations list-roots   --query 'Roots[0].PolicyTypes'   --output table
-```
-
-If required:
-
-``` bash
-aws organizations enable-policy-type   --root-id "$ROOT_ID"   --policy-type SERVICE_CONTROL_POLICY
-```
-
-Verify again:
-
-``` bash
-aws organizations list-roots   --query 'Roots[0].PolicyTypes'   --output table
-```
-
-Expected: `SERVICE_CONTROL_POLICY` with status `ENABLED`.
-
-------------------------------------------------------------------------
-
-## SCP Guardrail
-
-The initial policy protects security services from selected destructive
-operations such as stopping/deleting CloudTrail and stopping/deleting
-AWS Config components.
-
-The rollout pattern is deliberately:
-
-``` text
-Write policy
-  -> Validate JSON
-  -> Terraform plan
-  -> Create policy
-  -> Attach to Development
-  -> Test
-  -> Observe
-  -> Promote only after validation
-```
-
-Retrieve the deployed policy:
-
-``` bash
-SCP_ID=$(terraform output -raw development_security_scp_id)
-echo "$SCP_ID"
-```
-
-Validate attachment:
-
-``` bash
-aws organizations list-targets-for-policy   --policy-id "$SCP_ID"   --query 'Targets[*].[Name,TargetId,Type]'   --output table
-```
-
-The target should be the Development OU.
-
-### SCP principles
-
--   SCPs do not grant permissions.
--   SCPs limit the maximum permissions available to affected member
-    accounts.
--   Roll out new restrictive policies gradually.
--   Maintain break-glass/recovery planning.
--   Do not use the Organization root as the first test target.
-
-------------------------------------------------------------------------
-
-## CloudTrail Verification
-
-Retrieve the trail:
-
-``` bash
-TRAIL=$(terraform output -raw cloudtrail_name)
-echo "$TRAIL"
-```
-
-Status:
-
-``` bash
-aws cloudtrail get-trail-status   --name "$TRAIL"   --query '[IsLogging,LatestDeliveryTime,LatestDeliveryError]'   --output table
-```
-
-`IsLogging` should be `True`.
-
-Configuration:
-
-``` bash
-aws cloudtrail get-trail   --name "$TRAIL"   --query 'Trail.[Name,S3BucketName,IsMultiRegionTrail,LogFileValidationEnabled]'   --output table
-```
-
-Multi-region and log-file validation should be enabled.
-
-### CloudTrail S3 security
-
-``` bash
-CT_BUCKET=$(terraform output -raw cloudtrail_bucket_name)
-
-aws s3api get-public-access-block   --bucket "$CT_BUCKET"
-
-aws s3api get-bucket-versioning   --bucket "$CT_BUCKET"
-
-aws s3api get-bucket-encryption   --bucket "$CT_BUCKET"
-```
-
-Check delivered objects:
-
-``` bash
-aws s3 ls "s3://$CT_BUCKET/AWSLogs/" --recursive | head
-```
-
-CloudTrail delivery is asynchronous, so new objects may take time to
-appear.
-
-------------------------------------------------------------------------
-
-## AWS Config Verification
-
-Recorder:
-
-``` bash
-aws configservice describe-configuration-recorder-status   --query 'ConfigurationRecordersStatus[*].[name,recording,lastStatus,lastStartTime]'   --output table
-```
-
-`recording` should be `True`.
-
-Delivery channel:
-
-``` bash
-aws configservice describe-delivery-channels   --query 'DeliveryChannels[*].[name,s3BucketName]'   --output table
-```
-
-Config S3 bucket:
-
-``` bash
-CONFIG_BUCKET=$(terraform output -raw config_bucket_name)
-
-aws s3api get-public-access-block   --bucket "$CONFIG_BUCKET"
-
-aws s3api get-bucket-versioning   --bucket "$CONFIG_BUCKET"
-
-aws s3api get-bucket-encryption   --bucket "$CONFIG_BUCKET"
-```
-
-------------------------------------------------------------------------
-
-## GuardDuty Verification
-
-``` bash
-GD_ID=$(terraform output -raw guardduty_detector_id)
-echo "$GD_ID"
-
-aws guardduty get-detector   --detector-id "$GD_ID"   --query '[Status,FindingPublishingFrequency]'   --output table
-```
-
-Expected status: `ENABLED`.
-
-------------------------------------------------------------------------
-
-## Security Hub Verification
-
-``` bash
-aws securityhub describe-hub   --query '[HubArn,AutoEnableControls,ControlFindingGenerator]'   --output table
-```
-
-A valid Hub ARN confirms Security Hub is enabled.
-
-------------------------------------------------------------------------
-
-## Budget Verification
-
-``` bash
-ACCOUNT_ID=$(aws sts get-caller-identity   --query Account   --output text)
-
-aws budgets describe-budgets   --account-id "$ACCOUNT_ID"   --query 'Budgets[*].[BudgetName,BudgetLimit.Amount,BudgetLimit.Unit,TimeUnit]'   --output table
-```
-
-Expected logical result:
-
-``` text
-banking-landing-zone-monthly-budget    100    USD    MONTHLY
-```
-
-Budgets provide visibility/notifications. A budget does not
-automatically shut down AWS resources.
-
-------------------------------------------------------------------------
-
-## End-to-End Validation
-
-Run:
-
-``` bash
-terraform output
-aws organizations describe-organization
-aws organizations list-roots
-```
-
-Validate SCP:
-
-``` bash
-SCP_ID=$(terraform output -raw development_security_scp_id)
-
-aws organizations list-targets-for-policy   --policy-id "$SCP_ID"
-```
-
-Validate CloudTrail:
-
-``` bash
-TRAIL=$(terraform output -raw cloudtrail_name)
-aws cloudtrail get-trail-status --name "$TRAIL"
-```
-
-Validate Config:
-
-``` bash
-aws configservice describe-configuration-recorder-status
-```
-
-Validate GuardDuty:
-
-``` bash
-GD_ID=$(terraform output -raw guardduty_detector_id)
-aws guardduty get-detector --detector-id "$GD_ID"
-```
-
-Validate Security Hub:
-
-``` bash
-aws securityhub describe-hub
-```
-
-Validate Budget:
-
-``` bash
-aws budgets describe-budgets   --account-id "$(aws sts get-caller-identity --query Account --output text)"
-```
-
-Finally:
-
-``` bash
-terraform plan
-```
-
-Desired final result:
-
-``` text
-No changes. Your infrastructure matches the configuration.
-```
-
-------------------------------------------------------------------------
-
-## Terraform State Strategy
-
-Terraform state maps configuration to deployed AWS resources and must be
-protected.
-
-Do not:
-
--   Commit `terraform.tfstate`.
--   Manually edit state.
--   Publish state.
--   Reuse another project's state key.
-
-For enterprise/team usage, use a dedicated encrypted remote backend with
-state locking.
-
-Example:
-
-``` hcl
-terraform {
-  backend "s3" {
-    bucket       = "REPLACE-landing-zone-terraform-state"
-    key          = "project4/landing-zone/terraform.tfstate"
-    region       = "us-east-1"
-    encrypt      = true
-    use_lockfile = true
-  }
-}
-```
-
-Bootstrap the backend separately. Project 4 should use its own state and
-must not reuse Project 1, 2, or 3 state.
-
-------------------------------------------------------------------------
-
-## CI/CD Strategy
-
-A safe pull-request pipeline should initially run:
-
-``` bash
-terraform fmt -check -recursive
-terraform init -backend=false
-terraform validate
-```
-
-Validate policy JSON:
-
-``` bash
-find ../policies -name '*.json' -print0 |
-while IFS= read -r -d '' file; do
-  jq empty "$file"
-done
-```
-
-Recommended flow:
-
-``` text
-Feature Branch
-  -> Pull Request
-  -> fmt / validate / policy checks
-  -> Terraform Plan
-  -> Human Approval
-  -> Protected Deployment Identity
-  -> Terraform Apply
-```
-
-Do not automatically apply Organization/SCP changes from arbitrary
-branches.
-
-------------------------------------------------------------------------
-
-## Enterprise Extensions
-
-The lab baseline can be expanded with:
-
--   Dedicated Log Archive account.
--   Dedicated Security/Audit account.
--   Shared Services account.
--   IAM Identity Center.
--   Delegated administrators.
--   Organization-wide CloudTrail.
--   AWS Config aggregator.
--   GuardDuty organization configuration.
--   Security Hub organization configuration.
--   EventBridge/SIEM integration.
--   KMS customer-managed keys where required.
--   S3 Object Lock where immutable audit retention is required.
--   Backup policies.
--   Tag policies.
--   Account vending.
--   Mandatory tagging.
--   Root-user controls.
--   Break-glass access.
--   MFA governance.
--   Cost allocation tags and anomaly detection.
--   Central network/DNS/egress governance.
-
-These should be implemented according to enterprise requirements rather
-than enabled blindly.
-
-------------------------------------------------------------------------
-
-## Why the Lab Does Not Create Multiple Member Accounts
-
-Creating Security, Log Archive, Shared Services, Development, UAT, and
-Production accounts adds account lifecycle, email, billing, IAM
-bootstrap, cleanup, and governance complexity.
-
-This project therefore demonstrates the organization and OU governance
-model without creating unnecessary accounts. In production, member
-accounts are placed into the appropriate OUs and inherit applicable
-policies.
-
-------------------------------------------------------------------------
-
-## Troubleshooting
-
-### `AWSOrganizationsNotInUseException`
-
-The account is not part of an Organization.
-
-For an authorized lab management account:
-
-``` bash
-aws organizations create-organization   --feature-set ALL
-```
-
-### `PolicyTypeNotEnabledException`
-
-Check:
-
-``` bash
-aws organizations list-roots   --query 'Roots[0].PolicyTypes'
-```
-
-Enable:
-
-``` bash
-aws organizations enable-policy-type   --root-id "$ROOT_ID"   --policy-type SERVICE_CONTROL_POLICY
-```
-
-Then rerun:
-
-``` bash
-terraform plan
+```bash
 terraform apply
 ```
 
-If Terraform already created the SCP before the attachment failed, the
-next plan should normally contain only the missing attachment.
+---
 
-### Terraform `file()` path error
+# 21. Terraform Module Dependency Flow
 
-If Terraform lives in:
+The root Terraform configuration connects the modules.
 
-``` text
-project4-aws-landing-zone/terraform/
+```text
+VPC
+ │
+ ├────────► Security Groups
+ │
+ ├────────► ALB
+ │
+ └────────► ECS
+              ▲
+              │
+IAM ──────────┤
+              │
+ECR ──────────┤
+              │
+CloudWatch ───┘
 ```
 
-and policies live in:
+For example, the ECS module receives:
 
-``` text
-project4-aws-landing-zone/policies/scp/
+```text
+Private subnet IDs
+ECS security group
+Execution role ARN
+Task role ARN
+Infrastructure role ARN
+ECR repository URL
+Blue/Green target groups
+Production listener rule
+CloudWatch log group
 ```
 
-use:
+This keeps individual Terraform modules reusable while the root module handles integration.
 
-``` hcl
-policy_content = file(
-  "${path.module}/../policies/scp/deny-disable-security-services.json"
-)
+---
+
+# 22. Validate Infrastructure
+
+After deployment:
+
+```bash
+terraform output
 ```
 
-### Missing module argument
+Expected infrastructure outputs include information such as:
 
-Inspect that module's `variables.tf`. Inputs should belong to the
-correct module. For example, budget limits belong to the budget module,
-not the GuardDuty/Security Hub module.
-
-### S3 bucket already exists
-
-S3 names are globally unique. Change the CloudTrail or Config bucket
-name.
-
-### CloudTrail bucket initially empty
-
-Confirm:
-
-``` bash
-aws cloudtrail get-trail-status --name "$TRAIL"
+```text
+ALB DNS Name
+VPC ID
+Public Subnet IDs
+Private Subnet IDs
+ECS Cluster Name
+Task Definition ARN
+Target Group ARNs
+Listener ARN
 ```
 
-If logging is true and there is no delivery error, allow time for
-asynchronous log delivery.
+---
 
-### Config not recording
+# 23. Validate ECS Service
+
+Check ECS service status:
+
+```bash
+aws ecs describe-services \
+  --cluster banking-devops-dev-cluster \
+  --services banking-devops-dev-service \
+  --region us-east-1
+```
+
+Confirm that the service reports:
+
+```text
+deployment strategy = BLUE_GREEN
+running tasks        = expected count
+deployment status    = completed
+```
+
+---
+
+# 24. Validate Target Health
+
+During a Blue/Green deployment, inspect both ALB target groups.
+
+The incoming revision should transition through:
+
+```text
+Initial
+   ↓
+Health Checking
+   ↓
+Healthy
+```
+
+Production traffic is shifted only after the required deployment health conditions are satisfied.
+
+---
+
+# 25. Validate Application
+
+Retrieve the ALB DNS name:
+
+```bash
+terraform output alb_dns_name
+```
+
+Access:
+
+```text
+http://<ALB-DNS-NAME>
+```
+
+Expected application response:
+
+```text
+🏦 Banking DevOps Platform
+
+Project 1
+
+Successfully deployed using
+
+• Terraform
+• ECS Fargate
+• ECR
+• ALB
+• CloudWatch
+```
+
+---
+
+# 26. Deployment Workflow
+
+Normal development flow:
+
+```text
+Developer Change
+      ↓
+Feature / Development Branch
+      ↓
+Commit
+      ↓
+Push
+      ↓
+GitHub Actions
+      ↓
+Build
+      ↓
+Security Validation
+      ↓
+ECR
+      ↓
+New ECS Revision
+      ↓
+Blue/Green Deployment
+      ↓
+Health Validation
+      ↓
+Production Traffic Shift
+      ↓
+Bake
+      ↓
+Old Revision Terminated
+```
+
+---
+
+# 27. Troubleshooting
+
+## ECS Task Not Starting
 
 Check:
 
-``` bash
-aws configservice describe-configuration-recorder-status
-aws configservice describe-delivery-channels
+```text
+ECS Service Events
+CloudWatch Logs
+Task Definition
+Execution Role
+ECR Image
+Private Subnet/NAT connectivity
+Security Groups
 ```
 
-Then inspect the Config IAM role and S3 bucket policy.
+---
 
-------------------------------------------------------------------------
+## ALB Target Unhealthy
 
-## Operational Ownership
+Verify:
 
-``` text
-Cloud Platform Team
-├── Organizations / OUs
-├── Terraform modules
-├── Landing-zone baseline
-└── Platform governance
-
-Security Team
-├── SCP requirements
-├── GuardDuty
-├── Security Hub
-├── Audit logging
-└── Compliance
-
-Application Teams
-├── Workload resources
-├── Application IAM
-├── Tags
-└── Guardrail compliance
-
-FinOps
-├── Budgets
-├── Cost allocation
-├── Forecasting
-└── Optimization
+```text
+Container is running
+Application listens on port 5000
+Target group health-check configuration
+ALB → ECS security-group access
+Application health endpoint
 ```
 
-------------------------------------------------------------------------
+---
 
-## Evidence to Capture
+## Blue/Green Role Error
 
-Useful portfolio/audit evidence:
+If ECS reports:
 
-``` text
-01-organization.png
-02-root-and-ous.png
-03-workloads-child-ous.png
-04-scp-policy.png
-05-scp-development-attachment.png
-06-cloudtrail-status.png
-07-cloudtrail-s3-security.png
-08-config-recorder.png
-09-config-delivery-channel.png
-10-guardduty-enabled.png
-11-security-hub.png
-12-budget.png
-13-terraform-output.png
-14-final-terraform-plan-no-changes.png
+```text
+Unable to assume role and validate the specified targetGroupArn
 ```
 
-Never capture credentials, secret keys, session tokens, passwords, or
-sensitive Terraform values.
+verify:
 
-------------------------------------------------------------------------
-
-## Cleanup
-
-Do not blindly destroy an enterprise Landing Zone.
-
-First:
-
-``` bash
-terraform plan -destroy
+```text
+ECS Infrastructure Role
+        ↓
+Trust Relationship
+        ↓
+ecs.amazonaws.com
+        ↓
+AmazonECSInfrastructureRolePolicyForLoadBalancers
+        ↓
+advanced_configuration.role_arn
 ```
 
-For a disposable lab only, after reviewing all resources:
+---
 
-``` bash
-terraform destroy
+## Terraform Validation
+
+Always run:
+
+```bash
+terraform fmt -recursive
+terraform validate
+terraform plan
 ```
 
-The Organization itself was intentionally created manually in this
-implementation and should not be automatically removed by Terraform.
-Organization deletion should be handled as a separate, controlled
-administrative operation after checking member-account and AWS
-Organizations requirements.
+before applying infrastructure changes.
 
-------------------------------------------------------------------------
+---
 
-## Definition of Done
+# 28. Security Principles
 
--   [x] AWS Organization exists with ALL features.
--   [x] Security OU exists.
--   [x] Infrastructure OU exists.
--   [x] Workloads OU exists.
--   [x] Development OU exists.
--   [x] UAT OU exists.
--   [x] Production OU exists.
--   [x] SCP policy type is enabled.
--   [x] Security-service protection SCP exists.
--   [x] SCP is attached to Development.
--   [x] CloudTrail is enabled and logging.
--   [x] CloudTrail is multi-region.
--   [x] CloudTrail log-file validation is enabled.
--   [x] CloudTrail S3 bucket is private, encrypted, and versioned.
--   [x] AWS Config recorder is enabled.
--   [x] AWS Config delivery channel exists.
--   [x] Config S3 bucket is protected.
--   [x] GuardDuty is enabled.
--   [x] Security Hub is enabled.
--   [x] Monthly Budget exists.
--   [x] Terraform outputs are available.
--   [x] Final Terraform plan contains no unintended changes.
+The implementation follows several enterprise security principles:
 
-------------------------------------------------------------------------
+- ECS workloads run in private subnets
+- No public IP is assigned to ECS tasks
+- Application port is accessible only through ALB
+- IAM roles separate platform and application permissions
+- Container images are vulnerability scanned
+- Infrastructure policies are validated using OPA
+- Infrastructure is managed through Terraform
+- Application deployment is automated
+- Runtime logs are centralized in CloudWatch
+
+---
+
+# 29. Current Platform Capabilities
+
+The project currently demonstrates:
+
+- AWS multi-AZ VPC architecture
+- Public/private subnet separation
+- Internet Gateway and NAT Gateway
+- Application Load Balancer
+- ECS Fargate
+- Amazon ECR
+- IAM execution/task/infrastructure roles
+- CloudWatch logging
+- Container Insights
+- Terraform remote infrastructure management
+- Modular Terraform
+- GitHub Actions CI/CD
+- Docker image build and publishing
+- Trivy vulnerability scanning
+- OPA governance validation
+- ECS native Blue/Green deployment
+- Automated ALB traffic switching
+- Deployment bake period
+- Automatic cleanup of previous ECS revision
+
+---
+
+# 30. Future Enhancements
+
+The platform is designed to evolve toward a broader enterprise DevOps reference architecture.
+
+Planned areas can include:
+
+```text
+HTTPS / ACM
+Route 53
+AWS WAF
+Secrets Manager
+ECS Auto Scaling
+CloudWatch Alarms
+SNS Notifications
+Automated rollback controls
+Enhanced OPA governance
+Terraform security scanning
+Multi-environment promotion
+Kubernetes / EKS
+GitOps
+Prometheus / Grafana
+Disaster Recovery
+Cloud Governance
+```
+
+---
+
+# 31. Engineering Principles
+
+This repository demonstrates the following engineering approach:
+
+> **Build once, validate continuously, deploy safely, observe everything, and manage infrastructure as code.**
+
+The objective is not simply to deploy an application, but to demonstrate how infrastructure, security, deployment automation, governance, and operational visibility work together in an enterprise DevOps platform.
+
+---
+
+## Project
+
+**Banking DevOps Platform**
+
+Enterprise DevOps / DevSecOps reference implementation on AWS.
+
+**Environment:** Development  
+**Cloud:** AWS  
+**Primary Region:** `us-east-1`  
+**Infrastructure:** Terraform  
+**Runtime:** Amazon ECS Fargate  
+**CI/CD:** GitHub Actions  
+**Deployment Strategy:** Native ECS Blue/Green
