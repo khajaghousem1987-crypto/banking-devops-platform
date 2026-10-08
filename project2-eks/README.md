@@ -1,1211 +1,588 @@
-# Project 2 – Enterprise Amazon EKS Platform with Helm & GitOps
+# Project 2 — Mandatory Deployment Sequence and Command Runbook
 
-## 1. Overview
+## 1. Deployment principles
 
-This project implements an enterprise-style container platform on AWS using Amazon EKS.
+This runbook covers two scenarios:
 
-The platform provisions Kubernetes infrastructure using Terraform, stores application images in Amazon ECR, deploys workloads using Kubernetes and Helm, and exposes the application through an AWS Application Load Balancer using the AWS Load Balancer Controller.
+- **Existing environment:** Validate and operate the deployed EKS platform without recreating infrastructure.
+- **New environment:** Build the platform in the required dependency order.
 
-The project is intentionally maintained separately from Project 1 (ECS/Fargate).
+**Important:** Project 1 ECS infrastructure and application must remain untouched. Project 2 uses separate Terraform state, application source, ECR repository and Kubernetes workloads.
 
-### High-Level Flow
+Current documented DEV environment:
 
-```text
-Developer
-   |
-   | git clone
-   v
-Git Repository
-   |
-   +----------------------+
-   |                      |
-   v                      v
-Terraform              Application
-   |                      |
-   v                      v
-AWS Infrastructure     Docker Build
-   |                      |
-   |                      v
-   |                  Amazon ECR
-   |                      |
-   v                      v
-Amazon EKS <--------- Kubernetes / Helm
-   |
-   v
-Kubernetes Deployment
-   |
-   v
-ClusterIP Service
-   |
-   v
-Ingress
-   |
-   v
-AWS Load Balancer Controller
-   |
-   v
-Internet-Facing ALB
-   |
-   v
-Browser
-```
-
----
-
-# 2. Technology Stack
-
-| Layer | Technology |
+| Parameter | Value |
 |---|---|
-| Cloud | AWS |
-| Infrastructure as Code | Terraform |
-| Container Runtime | Docker |
-| Container Registry | Amazon ECR |
-| Kubernetes | Amazon EKS |
-| Package Management | Helm |
-| Ingress | Kubernetes Ingress |
-| Load Balancer | AWS Application Load Balancer |
-| ALB Integration | AWS Load Balancer Controller |
-| IAM Integration | IAM / IRSA |
-| Networking | VPC, Public/Private Subnets, NAT Gateway, IGW |
-| Application | Python / Flask / Gunicorn |
-| GitOps | Argo CD – planned |
-| Monitoring | Prometheus/Grafana – planned |
+| AWS account | `500788673290` |
+| Region | `us-east-1` |
+| EKS cluster | `banking-eks-dev-cluster` |
+| Node group | `banking-eks-dev-node-group` |
+| Namespace | `banking-dev` |
+| ECR repository | `banking-eks-dev-app` |
+| Application deployment | `banking-app` |
+| Application Service | `banking-app-service` |
+| Ingress | `banking-app-ingress` |
+| Helm release | `banking-app` |
 
-> Do not mark Argo CD or Prometheus/Grafana as implemented until those components have been deployed and validated.
+**Warning:** These values belong to the documented environment. Always check the current AWS identity, cluster and Terraform state before execution.
 
 ---
 
-# 3. Project Separation
+## 2. Phase 1 — AWS authentication
 
-Project 1 and Project 2 are intentionally separated.
-
-```text
-banking-devops-platform/
-│
-├── app/                         # Project 1 application
-├── iac/                         # Project 1 ECS infrastructure
-│
-└── project2-eks/
-    ├── app/                     # Project 2 application
-    ├── iac/                     # Project 2 Terraform
-    ├── kubernetes/              # Kubernetes manifests
-    ├── helm/                    # Helm charts
-    ├── argocd/                  # GitOps configuration
-    ├── monitoring/              # Monitoring configuration
-    ├── policies/                # Security/policy definitions
-    ├── scripts/                 # Operational scripts
-    └── README.md
-```
-
-Project 1:
-
-```text
-Application
-   ↓
-banking-devops-dev-app
-   ↓
-Amazon ECS/Fargate
-```
-
-Project 2:
-
-```text
-project2-eks/app
-   ↓
-banking-eks-dev-app
-   ↓
-Amazon EKS
-```
-
-Do not modify Project 1 application or ECS resources while working on Project 2.
-
----
-
-# 4. Current DEV Environment
-
-## AWS
-
-```text
-AWS Account : 500788673290
-Region      : us-east-1
-Environment : dev
-```
-
-## Networking
-
-Shared Project 1 VPC:
-
-```text
-VPC:
-vpc-03885f609bfdced80
-```
-
-Public subnets:
-
-```text
-subnet-0faec8b50e5be1d26
-subnet-0e1b81d428eeabb25
-```
-
-Private subnets:
-
-```text
-subnet-06468a3da71880bc7
-subnet-0fd61fcdd328610df
-```
-
-The EKS cluster reuses the existing VPC through Terraform remote state.
-
----
-
-# 5. EKS Environment
-
-Cluster:
-
-```text
-banking-eks-dev-cluster
-```
-
-Node group:
-
-```text
-banking-eks-dev-node-group
-```
-
-Node role:
-
-```text
-banking-eks-dev-eks-node-role
-```
-
-Kubernetes version:
-
-```text
-1.36
-```
-
-Current lab worker instance type:
-
-```text
-t3.micro
-```
-
-Important:
-
-`t3.micro` currently exposes a very small Kubernetes pod capacity in this environment.
-
-Observed:
-
-```text
-Allocatable Pods Per Node: 4
-```
-
-Therefore this DEV environment uses conservative replica counts.
-
-This is a lab constraint and is NOT a recommended production EKS sizing model.
-
----
-
-# 6. ECR Repository
-
-Project 2 has its own ECR repository:
-
-```text
-banking-eks-dev-app
-```
-
-Repository URI:
-
-```text
-500788673290.dkr.ecr.us-east-1.amazonaws.com/banking-eks-dev-app
-```
-
-Current application image:
-
-```text
-500788673290.dkr.ecr.us-east-1.amazonaws.com/banking-eks-dev-app:v1.0.1
-```
-
-ECR configuration includes:
-
-```text
-Image scanning on push
-AES256 encryption
-Immutable image tags
-Terraform management
-```
-
-Because image tags are immutable, use a new version for every release.
-
-Example:
-
-```text
-v1.0.1
-v1.0.2
-v1.0.3
-```
-
-Do NOT overwrite an existing tag.
-
----
-
-# 7. Prerequisites for a New Engineer
-
-Before onboarding, install:
-
-```text
-Git
-AWS CLI
-Terraform
-kubectl
-Docker
-Helm
-eksctl
-```
-
-Verify:
+### Step 1: Configure environment variables
 
 ```bash
-git --version
+export AWS_REGION=us-east-1
+export CLUSTER_NAME=banking-eks-dev-cluster
+export ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+```
+
+**Why:** Avoids repeatedly typing account, region and cluster identifiers.
+
+### Step 2: Confirm AWS identity
+
+```bash
+aws sts get-caller-identity
+echo "$ACCOUNT_ID"
+```
+
+**Expected:** Account `500788673290`.
+
+**Stop condition:** Do not continue if the account differs.
+
+### Step 3: Verify required tools
+
+```bash
 aws --version
 terraform version
 kubectl version --client
-docker --version
-helm version
 eksctl version
+helm version --short
+docker --version
+git --version
 ```
 
-Docker Desktop must be running if building images locally.
+**Why:** Confirms the workstation has all tools required for infrastructure provisioning, IAM configuration, Kubernetes deployment and validation.
 
 ---
 
-# 8. AWS Authentication
+## 3. Phase 2 — Terraform infrastructure
 
-Confirm the correct AWS identity before doing anything.
-
-```bash
-aws sts get-caller-identity
-```
-
-Expected account:
-
-```text
-500788673290
-```
-
-Example:
-
-```json
-{
-  "Account": "500788673290"
-}
-```
-
-Also verify the region:
-
-```bash
-aws configure get region
-```
-
-Expected:
-
-```text
-us-east-1
-```
-
-If an AWS CLI named profile is required:
-
-```bash
-export AWS_PROFILE=<profile-name>
-```
-
-Then repeat:
-
-```bash
-aws sts get-caller-identity
-```
-
-Never run Terraform until the AWS account and region have been verified.
-
----
-
-# 9. Clone the Repository
-
-```bash
-git clone <repository-url>
-
-cd banking-devops-platform
-```
-
-Confirm Project 2:
-
-```bash
-ls project2-eks
-```
-
-Expected structure:
-
-```text
-app
-argocd
-helm
-iac
-kubernetes
-monitoring
-policies
-scripts
-README.md
-```
-
----
-
-# 10. Terraform Remote State
-
-Project 2 uses its own Terraform state.
-
-Backend:
-
-```hcl
-terraform {
-  backend "s3" {
-    bucket         = "banking-infra"
-    key            = "project2-eks/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "terraform-state-lock-dev"
-    encrypt        = true
-  }
-}
-```
-
-Project 2 reads networking information from Project 1 through Terraform remote state.
-
-This allows Project 2 to reuse:
-
-```text
-VPC
-Public subnet IDs
-Private subnet IDs
-```
-
-without duplicating networking infrastructure.
-
----
-
-# 11. Terraform Initialization
-
-Navigate to:
+From the repository root:
 
 ```bash
 cd project2-eks/iac
-```
-
-Initialize:
-
-```bash
 terraform init
-```
-
-Validate:
-
-```bash
+terraform fmt -check -recursive
 terraform validate
-```
-
-Format:
-
-```bash
-terraform fmt -recursive
-```
-
-Review:
-
-```bash
 terraform plan
 ```
 
-IMPORTANT:
+**Why each command is required:**
 
-Never blindly run:
+| Command | Purpose |
+|---|---|
+| `terraform init` | Initializes the backend, providers and modules |
+| `terraform fmt -check -recursive` | Checks Terraform formatting without modifying files |
+| `terraform validate` | Validates Terraform configuration syntax and structure |
+| `terraform plan` | Shows intended infrastructure changes before approval |
+
+For a **new environment only**, after reviewing and approving the plan:
 
 ```bash
 terraform apply
 ```
 
-Review the entire plan first.
+**Important:** The existing environment already has Terraform-managed infrastructure. Do not apply changes merely to rerun the runbook.
 
-Expected changes must be understood before approval.
-
----
-
-# 12. Known Terraform Drift
-
-The EKS OIDC provider was associated using `eksctl`.
-
-As a result Terraform may detect:
-
-```text
-alpha.eksctl.io/cluster-oidc-enabled
-```
-
-as an external tag.
-
-Example plan:
-
-```text
-- "alpha.eksctl.io/cluster-oidc-enabled" = "true" -> null
-```
-
-Do NOT blindly apply this change.
-
-For isolated module operations, a targeted apply may be used after reviewing the plan.
-
-Example:
-
-```bash
-terraform apply -target=module.ecr
-```
-
-or:
-
-```bash
-terraform apply -target=module.eks_node_group
-```
-
-Targeted applies are an operational exception and should not replace normal Terraform lifecycle management.
-
-The long-term objective should be to reconcile externally created configuration into Terraform.
-
----
-
-# 13. Verify Existing AWS Infrastructure
-
-Check EKS:
+Verify the cluster:
 
 ```bash
 aws eks describe-cluster \
-  --name banking-eks-dev-cluster \
-  --region us-east-1 \
-  --query 'cluster.status' \
-  --output text
+  --name "$CLUSTER_NAME" \
+  --region "$AWS_REGION" \
+  --query 'cluster.{Status:status,Version:version,VPC:resourcesVpcConfig.vpcId}' \
+  --output table
 ```
 
-Expected:
+Expected cluster status: `ACTIVE`.
 
-```text
-ACTIVE
-```
-
-Check node group:
+Verify the node group:
 
 ```bash
 aws eks describe-nodegroup \
-  --cluster-name banking-eks-dev-cluster \
+  --cluster-name "$CLUSTER_NAME" \
   --nodegroup-name banking-eks-dev-node-group \
-  --region us-east-1 \
-  --query 'nodegroup.{Status:status,Health:health}'
+  --region "$AWS_REGION" \
+  --query 'nodegroup.{Status:status,Health:health}' \
+  --output json
 ```
 
-Expected status:
-
-```text
-ACTIVE
-```
+Expected node group status: `ACTIVE`.
 
 ---
 
-# 14. Configure kubectl
-
-Generate/update kubeconfig:
+## 4. Phase 3 — Configure Kubernetes access
 
 ```bash
 aws eks update-kubeconfig \
-  --region us-east-1 \
-  --name banking-eks-dev-cluster
+  --region "$AWS_REGION" \
+  --name "$CLUSTER_NAME"
 ```
 
-Verify context:
+**Why:** Creates or updates the local kubeconfig context so `kubectl` can communicate with the EKS cluster.
+
+Verify:
 
 ```bash
 kubectl config current-context
-```
-
-Check cluster connectivity:
-
-```bash
 kubectl cluster-info
-```
-
-Check nodes:
-
-```bash
-kubectl get nodes
-```
-
-All worker nodes should be:
-
-```text
-Ready
-```
-
-Example:
-
-```text
-NAME                          STATUS
-ip-10-0-x-x.ec2.internal     Ready
-ip-10-0-x-x.ec2.internal     Ready
-```
-
-If nodes are `NotReady`, stop here and troubleshoot the cluster before deploying applications.
-
----
-
-# 15. Verify Core Kubernetes Components
-
-```bash
+kubectl get nodes -o wide
 kubectl get pods -n kube-system
 ```
 
-Validate:
+**Expected:** Worker nodes are `Ready`, and core system components such as CoreDNS, kube-proxy and VPC CNI are healthy.
 
-```text
-aws-node       Running
-coredns        Running
-kube-proxy     Running
-```
-
-AWS Load Balancer Controller must also be:
-
-```text
-Running
-```
-
-Check:
-
-```bash
-kubectl get deployment aws-load-balancer-controller -n kube-system
-```
-
-Current DEV environment may run one controller replica because of lab pod-capacity constraints.
-
-Production environments should use an appropriate HA configuration.
+Do not continue with application deployment if cluster networking is unhealthy.
 
 ---
 
-# 16. EKS CNI Configuration
+## 5. Phase 4 — IAM OIDC provider
 
-The EKS node IAM role requires:
-
-```text
-AmazonEKSWorkerNodePolicy
-AmazonEC2ContainerRegistryPullOnly
-AmazonEKS_CNI_Policy
-```
-
-The `AmazonEKS_CNI_Policy` was required to resolve CNI/IP allocation issues encountered during implementation.
-
-Verify:
+### Step 1: Check the cluster OIDC issuer
 
 ```bash
-aws iam list-attached-role-policies \
-  --role-name banking-eks-dev-eks-node-role
+aws eks describe-cluster \
+  --name "$CLUSTER_NAME" \
+  --region "$AWS_REGION" \
+  --query 'cluster.identity.oidc.issuer' \
+  --output text
 ```
+
+**Why:** Every EKS cluster has its own OIDC issuer URL. IAM uses this identity to validate Kubernetes ServiceAccount tokens for IRSA.
+
+### Step 2: Check existing IAM OIDC providers
+
+```bash
+aws iam list-open-id-connect-providers
+```
+
+**Why:** Checks registered IAM providers. Compare the provider ARN suffix with the issuer ID from the previous command.
+
+### Step 3: Associate OIDC — new environment only
+
+```bash
+eksctl utils associate-iam-oidc-provider \
+  --cluster "$CLUSTER_NAME" \
+  --region "$AWS_REGION" \
+  --approve
+```
+
+**Why:** Registers the cluster's OIDC issuer in IAM, enabling IAM Roles for Service Accounts.
+
+**Existing environment:** This step was already completed. Do not recreate it.
 
 ---
 
-# 17. Public/Private Subnet Discovery Tags
+## 6. Phase 5 — AWS Load Balancer Controller IAM policy
 
-AWS Load Balancer Controller requires appropriate subnet discovery.
+The controller requires AWS permissions to discover subnets, manage security groups, create ALBs, configure listeners, register targets and manage target groups.
 
-Public subnets:
-
-```text
-kubernetes.io/role/elb = 1
-```
-
-Private subnets:
-
-```text
-kubernetes.io/role/internal-elb = 1
-```
-
-Validate:
+### Step 1: Check whether the IAM policy exists
 
 ```bash
-aws ec2 describe-subnets \
-  --subnet-ids \
-  subnet-0faec8b50e5be1d26 \
-  subnet-0e1b81d428eeabb25 \
-  --query 'Subnets[*].{Subnet:SubnetId,AZ:AvailabilityZone,Tags:Tags}'
+aws iam get-policy \
+  --policy-arn "arn:aws:iam::${ACCOUNT_ID}:policy/AWSLoadBalancerControllerIAMPolicy"
 ```
 
-Missing subnet tags can prevent ALB provisioning.
+If the policy exists, continue to the next phase.
+
+### Step 2: Create the policy — new environment only
+
+Download the **version-matched official AWS Load Balancer Controller IAM policy** from the controller's release documentation, review it and save it as:
+
+`project2-eks/policies/aws-load-balancer-controller-iam-policy.json`
+
+Then execute:
+
+```bash
+aws iam create-policy \
+  --policy-name AWSLoadBalancerControllerIAMPolicy \
+  --policy-document file://aws-load-balancer-controller-iam-policy.json
+```
+
+Run this command from the directory containing the policy JSON.
+
+**Why:** The controller needs AWS API permissions, which Kubernetes RBAC alone cannot provide.
+
+**Important:** Do not create a second policy if the correct policy already exists. Confirm the policy matches the controller version being installed.
 
 ---
 
-# 18. AWS Load Balancer Controller
+## 7. Phase 6 — IRSA role and controller ServiceAccount
 
-The controller uses IAM Roles for Service Accounts (IRSA).
-
-Service account:
-
-```text
-aws-load-balancer-controller
-```
-
-Namespace:
-
-```text
-kube-system
-```
-
-Verify:
+### Step 1: Check existing ServiceAccount
 
 ```bash
-kubectl get sa aws-load-balancer-controller \
+kubectl get serviceaccount \
+  aws-load-balancer-controller \
   -n kube-system \
   -o yaml
 ```
 
 Look for:
 
-```text
-eks.amazonaws.com/role-arn
+```yaml
+eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT_ID:role/AmazonEKSLoadBalancerControllerRole
 ```
 
-Verify controller:
+**Why:** This annotation connects the Kubernetes ServiceAccount to an AWS IAM role.
+
+### Step 2: Create IRSA — new environment only
 
 ```bash
+eksctl create iamserviceaccount \
+  --cluster "$CLUSTER_NAME" \
+  --region "$AWS_REGION" \
+  --namespace kube-system \
+  --name aws-load-balancer-controller \
+  --role-name AmazonEKSLoadBalancerControllerRole \
+  --attach-policy-arn "arn:aws:iam::${ACCOUNT_ID}:policy/AWSLoadBalancerControllerIAMPolicy" \
+  --approve
+```
+
+**Why:** Creates the IAM role, establishes OIDC trust and associates the role with the controller ServiceAccount.
+
+### Step 3: Verify IAM trust
+
+```bash
+aws iam get-role \
+  --role-name AmazonEKSLoadBalancerControllerRole \
+  --query 'Role.AssumeRolePolicyDocument'
+```
+
+Verify that the trust policy references the correct OIDC provider and restricts access to the intended ServiceAccount:
+
+`system:serviceaccount:kube-system:aws-load-balancer-controller`
+
+**Existing environment:** The IAM role and ServiceAccount were already created successfully. Do not recreate them.
+
+---
+
+## 8. Phase 7 — AWS Load Balancer Controller installation
+
+### Step 1: Add the Helm repository
+
+```bash
+helm repo add eks https://aws.github.io/eks-charts
+helm repo update
+```
+
+**Why:** Makes the AWS Load Balancer Controller chart available to Helm.
+
+### Step 2: Check existing installation
+
+```bash
+helm list -n kube-system
+
+kubectl get deployment \
+  aws-load-balancer-controller \
+  -n kube-system
+```
+
+**Why:** Determines whether the controller is already managed by Helm.
+
+### Step 3: Install — new environment only
+
+```bash
+helm upgrade --install aws-load-balancer-controller \
+  eks/aws-load-balancer-controller \
+  --namespace kube-system \
+  --set clusterName="$CLUSTER_NAME" \
+  --set region="$AWS_REGION" \
+  --set vpcId=vpc-03885f609bfdced80 \
+  --set serviceAccount.create=false \
+  --set serviceAccount.name=aws-load-balancer-controller
+```
+
+**Why:** Installs the Kubernetes controller that translates ALB Ingress resources into AWS load balancer resources.
+
+The `serviceAccount.create=false` setting is critical because the IAM-enabled ServiceAccount was already created during the IRSA phase.
+
+**Version control:** For reproducible deployments, pin a tested Helm chart version rather than automatically accepting the newest version.
+
+### Step 4: Validate controller health
+
+```bash
+kubectl rollout status \
+  deployment/aws-load-balancer-controller \
+  -n kube-system \
+  --timeout=180s
+
 kubectl get pods \
   -n kube-system \
   -l app.kubernetes.io/name=aws-load-balancer-controller
+
+kubectl logs \
+  -n kube-system \
+  deployment/aws-load-balancer-controller \
+  --tail=100
 ```
 
-Expected:
-
-```text
-Running
-```
+**Expected:** Controller deployment is available and logs show no unresolved AWS IAM or reconciliation errors.
 
 ---
 
-# 19. Building the Application
+## 9. Phase 8 — Verify ALB subnet discovery
 
-Navigate to:
-
-```bash
-cd project2-eks/app
-```
-
-Login to ECR:
-
-```bash
-aws ecr get-login-password --region us-east-1 | \
-docker login \
---username AWS \
---password-stdin \
-500788673290.dkr.ecr.us-east-1.amazonaws.com
-```
-
-IMPORTANT FOR APPLE SILICON:
-
-EKS worker nodes use:
+Public subnets require:
 
 ```text
-amd64
+kubernetes.io/role/elb = 1
 ```
 
-MacBook Apple Silicon normally builds:
+Private subnets used for internal load balancers require:
 
 ```text
-arm64
-```
-
-Therefore explicitly build the image for:
-
-```text
-linux/amd64
-```
-
-Example:
-
-```bash
-docker buildx build \
-  --platform linux/amd64 \
-  -t 500788673290.dkr.ecr.us-east-1.amazonaws.com/banking-eks-dev-app:v1.0.2 \
-  --push .
-```
-
-Use a new image version because the ECR repository has immutable tags.
-
----
-
-# 20. Verify ECR Image
-
-```bash
-aws ecr describe-images \
-  --repository-name banking-eks-dev-app \
-  --region us-east-1
-```
-
-To verify a specific release:
-
-```bash
-aws ecr describe-images \
-  --repository-name banking-eks-dev-app \
-  --region us-east-1 \
-  --image-ids imageTag=v1.0.2
-```
-
-Do not proceed with Kubernetes deployment unless the image exists in ECR.
-
----
-
-# 21. Kubernetes Namespace
-
-Application namespace:
-
-```text
-banking-dev
+kubernetes.io/role/internal-elb = 1
 ```
 
 Verify:
 
 ```bash
-kubectl get namespace banking-dev
+aws ec2 describe-subnets \
+  --subnet-ids \
+  subnet-0faec8b50e5be1d26 \
+  subnet-0e1b81d428eeabb25 \
+  --query 'Subnets[*].{Subnet:SubnetId,AZ:AvailabilityZone,Tags:Tags}' \
+  --output json
 ```
 
-If building the environment from scratch:
+**Why:** Allows the controller to discover suitable public subnets for the internet-facing ALB.
+
+Ensure the selected subnets have appropriate routes, free IP addresses and availability-zone coverage.
+
+---
+
+## 10. Phase 9 — Build and publish application image
+
+From the repository root:
+
+```bash
+cd project2-eks/app
+```
+
+Authenticate Docker to ECR:
+
+```bash
+aws ecr get-login-password \
+  --region "$AWS_REGION" | \
+docker login \
+  --username AWS \
+  --password-stdin \
+  "${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+```
+
+**Why:** Allows Docker to push the image to the private ECR repository.
+
+Build and push a new immutable version:
+
+```bash
+export IMAGE_URI="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/banking-eks-dev-app"
+export IMAGE_TAG=v1.0.2
+
+docker buildx build \
+  --platform linux/amd64 \
+  --tag "${IMAGE_URI}:${IMAGE_TAG}" \
+  --push .
+```
+
+**Why:** Builds an image compatible with the documented AMD64 EKS worker nodes.
+
+Verify:
+
+```bash
+aws ecr describe-images \
+  --repository-name banking-eks-dev-app \
+  --region "$AWS_REGION" \
+  --image-ids imageTag="$IMAGE_TAG"
+```
+
+**Expected:** ECR returns the requested image metadata.
+
+Never reuse an existing immutable image tag.
+
+---
+
+## 11. Phase 10 — Kubernetes manifest deployment
+
+### Important ownership rule
+
+The repository contains both raw Kubernetes YAML and a Helm chart.
+
+**Choose one application deployment method:**
+
+- **Kustomize / kubectl:** Apply the raw manifests and overlays.
+- **Helm:** Install or upgrade the banking application Helm release.
+
+Do not manage the same Deployment, Service or Ingress simultaneously through Helm and `kubectl apply`. This can cause ownership conflicts and configuration drift.
+
+### Recommended manifest order
+
+| Order | Manifest | Why it is required |
+|---|---|---|
+| 1 | `namespace.yaml` | Creates workload isolation |
+| 2 | `configmap.yaml` | Supplies non-sensitive application settings |
+| 3 | `serviceaccount.yaml` | Defines the application Pod identity |
+| 4 | `deployment.yaml` | Creates application Pods |
+| 5 | `service.yaml` | Provides stable internal access |
+| 6 | `ingress.yaml` | Requests an ALB |
+| 7 | `hpa.yaml` | Enables application autoscaling when metrics and capacity are available |
+| 8 | `pdb.yaml` | Controls voluntary disruptions when replica capacity supports it |
+
+**Important:** The application ServiceAccount is separate from the AWS Load Balancer Controller ServiceAccount. The banking application does not automatically require an AWS IAM role.
+
+### For raw YAML / Kustomize deployments
+
+From the repository root:
 
 ```bash
 kubectl apply -f project2-eks/kubernetes/base/namespace.yaml
 ```
 
----
+If the remaining optional manifest files have been created and validated, deploy through the development overlay:
 
-# 22. Kubernetes Deployment Architecture
-
-```text
-Deployment
-banking-app
-      |
-      v
-Pod
-Flask/Gunicorn :5000
-      |
-      v
-Service
-banking-app-service
-ClusterIP :80
-      |
-      v
-Ingress
-banking-app-ingress
-      |
-      v
-AWS Load Balancer Controller
-      |
-      v
-ALB
-      |
-      v
-Browser
+```bash
+kubectl kustomize project2-eks/kubernetes/overlays/dev
 ```
+
+**Why:** Renders the effective configuration before deployment.
+
+Then:
+
+```bash
+kubectl apply -k project2-eks/kubernetes/overlays/dev
+```
+
+**Why:** Applies the declarative development environment configuration.
+
+**Existing environment:** The application is already Helm-managed. Do not execute this raw YAML deployment against the same resources.
 
 ---
 
-# 23. Helm Chart
+## 12. Phase 11 — Helm application deployment
 
-Helm chart:
-
-```text
-project2-eks/helm/banking-app
-```
-
-Structure:
-
-```text
-banking-app/
-├── Chart.yaml
-├── values.yaml
-└── templates/
-    ├── deployment.yaml
-    ├── service.yaml
-    └── ingress.yaml
-```
-
-Current chart:
-
-```text
-Chart Version : 0.1.0
-App Version   : 1.0.1
-```
-
----
-
-# 24. Helm Validation
-
-Before deploying:
+From the repository root:
 
 ```bash
 cd project2-eks/helm/banking-app
 ```
 
-Lint:
+Validate the chart:
 
 ```bash
 helm lint .
+helm template banking-app . --namespace banking-dev
 ```
 
-Expected:
+**Why:** Checks chart syntax and previews the rendered Kubernetes manifests.
 
-```text
-1 chart(s) linted, 0 chart(s) failed
-```
-
-Render:
-
-```bash
-helm template banking-app . -n banking-dev
-```
-
-Kubernetes client-side validation:
-
-```bash
-helm template banking-app . -n banking-dev | \
-kubectl apply --dry-run=client -f -
-```
-
-Expected resources:
-
-```text
-service/banking-app-service
-deployment.apps/banking-app
-ingress.networking.k8s.io/banking-app-ingress
-```
-
----
-
-# 25. Helm Installation
-
-For a clean/new environment:
-
-```bash
-helm install banking-app . \
-  -n banking-dev
-```
-
-If the namespace does not exist, create it first:
-
-```bash
-kubectl create namespace banking-dev
-```
-
-For this existing environment, resources originally created using `kubectl` were adopted into Helm using:
-
-```bash
-helm install banking-app . \
-  -n banking-dev \
-  --take-ownership
-```
-
-Do NOT use `--take-ownership` automatically in a new environment.
-
-It is required only when adopting existing resources after confirming that they belong to this release.
-
----
-
-# 26. Helm Verification
-
-```bash
-helm list -n banking-dev
-```
-
-Check:
+Check the existing release:
 
 ```bash
 helm status banking-app -n banking-dev
 ```
 
-Current validated release:
-
-```text
-STATUS   : deployed
-REVISION : 2
-```
-
-Verify ownership:
-
-```bash
-kubectl get deployment banking-app \
-  -n banking-dev \
-  -o jsonpath='{.metadata.annotations.meta\.helm\.sh/release-name}{"\n"}'
-```
-
-Expected:
-
-```text
-banking-app
-```
-
----
-
-# 27. Helm Upgrade
-
-After updating `values.yaml` or templates:
+For the existing environment, after reviewing intended chart changes:
 
 ```bash
 helm upgrade banking-app . \
-  -n banking-dev
+  --namespace banking-dev
 ```
 
-Check:
+**Why:** Updates the existing Helm-managed application without creating a competing deployment.
+
+For a new environment with no existing release:
 
 ```bash
-helm history banking-app -n banking-dev
+helm install banking-app . \
+  --namespace banking-dev \
+  --create-namespace
 ```
 
-Then:
+Do not use `--take-ownership` unless explicitly adopting verified existing resources.
+
+Validate:
 
 ```bash
+helm list -n banking-dev
+
 kubectl rollout status \
   deployment/banking-app \
-  -n banking-dev
+  -n banking-dev \
+  --timeout=180s
 ```
+
+**Expected:** Helm release is deployed and application rollout succeeds.
 
 ---
 
-# 28. Deployment Strategy
+## 13. Phase 12 — ALB and application validation
 
-Current DEV deployment uses:
-
-```yaml
-strategy:
-  type: RollingUpdate
-  rollingUpdate:
-    maxSurge: 0
-    maxUnavailable: 1
-```
-
-Reason:
-
-The current `t3.micro` workers have very limited pod capacity.
-
-Normal rolling updates can temporarily create an additional pod.
-
-That previously resulted in:
-
-```text
-FailedScheduling
-0/2 nodes are available: 2 Too many pods
-```
-
-Using:
-
-```text
-maxSurge: 0
-maxUnavailable: 1
-```
-
-allows Kubernetes to terminate one old application pod before creating its replacement.
-
-This is a DEV/lab capacity workaround.
-
-Production environments should have sufficient capacity for normal HA rolling deployments.
-
----
-
-# 29. Application Replica Count
-
-Current DEV value:
-
-```yaml
-replicaCount: 1
-```
-
-This is intentional because of current node pod capacity.
-
-Production should normally use multiple replicas distributed across worker nodes/AZs together with:
-
-```text
-PodDisruptionBudget
-Topology spread constraints / anti-affinity
-Autoscaling
-Adequate node capacity
-```
-
----
-
-# 30. Validate Application Deployment
+### Step 1: Verify Deployment
 
 ```bash
-kubectl get deployment -n banking-dev
+kubectl get deployment banking-app -n banking-dev
 ```
 
-Expected:
+Expected: desired and available replicas match.
 
-```text
-banking-app   1/1
-```
-
-Check rollout:
-
-```bash
-kubectl rollout status \
-  deployment/banking-app \
-  -n banking-dev
-```
-
-Expected:
-
-```text
-deployment "banking-app" successfully rolled out
-```
-
----
-
-# 31. Validate Pods
+### Step 2: Verify Pods
 
 ```bash
 kubectl get pods -n banking-dev -o wide
 ```
 
-Expected:
+Expected: application Pods are Running and Ready.
 
-```text
-READY   STATUS
-1/1     Running
-```
-
-Check image:
+### Step 3: Verify Service
 
 ```bash
-kubectl get pods -n banking-dev \
-  -o jsonpath='{range .items[*]}{.metadata.name}{" -> "}{.spec.containers[0].image}{"\n"}{end}'
+kubectl get service banking-app-service -n banking-dev
 ```
 
-Confirm the image belongs to:
+Expected: ClusterIP Service exposes port 80.
 
-```text
-banking-eks-dev-app
-```
-
-and NOT the Project 1 ECR repository.
-
----
-
-# 32. Validate Pod Health
-
-Check pod details:
+### Step 4: Verify EndpointSlices
 
 ```bash
-kubectl describe pod <pod-name> -n banking-dev
-```
-
-Application probes:
-
-```text
-Readiness Probe → HTTP /
-Liveness Probe  → HTTP /
-Port            → 5000
-```
-
-Check logs:
-
-```bash
-kubectl logs \
+kubectl get endpointslices \
   -n banking-dev \
-  deployment/banking-app
+  -l kubernetes.io/service-name=banking-app-service
 ```
 
-For live logs:
+**Why:** Confirms the Service resolves to application Pod endpoints.
+
+### Step 5: Verify Ingress
 
 ```bash
-kubectl logs \
-  -n banking-dev \
-  deployment/banking-app \
-  -f
+kubectl get ingress banking-app-ingress -n banking-dev
+
+kubectl describe ingress banking-app-ingress -n banking-dev
 ```
 
----
+Expected: Ingress class `alb` and a populated ALB DNS address.
 
-# 33. Validate Service
+### Step 6: Verify TargetGroupBinding
 
 ```bash
-kubectl get svc -n banking-dev
+kubectl get targetgroupbinding -n banking-dev
 ```
 
-Expected:
+**Why:** Confirms the AWS Load Balancer Controller has created the Kubernetes-to-AWS target group binding.
 
-```text
-banking-app-service   ClusterIP   ...   80/TCP
-```
-
-Inspect:
-
-```bash
-kubectl describe svc \
-  banking-app-service \
-  -n banking-dev
-```
-
-Check endpoints:
-
-```bash
-kubectl get endpoints \
-  banking-app-service \
-  -n banking-dev
-```
-
-The endpoint must NOT show:
-
-```text
-<none>
-```
-
-Expected pattern:
-
-```text
-10.0.x.x:5000
-```
-
-If endpoints are `<none>`, check:
-
-```text
-Pod readiness
-Service selectors
-Pod labels
-Container port
-Application health
-```
-
----
-
-# 34. Validate Ingress
-
-```bash
-kubectl get ingress -n banking-dev
-```
-
-Expected:
-
-```text
-banking-app-ingress
-CLASS: alb
-ADDRESS: <AWS-ALB-DNS>
-PORTS: 80
-```
-
-Detailed inspection:
-
-```bash
-kubectl describe ingress \
-  banking-app-ingress \
-  -n banking-dev
-```
-
----
-
-# 35. Retrieve Application URL
+### Step 7: Test the ALB
 
 ```bash
 ALB=$(kubectl get ingress banking-app-ingress \
@@ -1213,1106 +590,122 @@ ALB=$(kubectl get ingress banking-app-ingress \
   -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
 
 echo "$ALB"
+
+curl -i "http://${ALB}/"
 ```
 
-Test:
+Expected: HTTP 200 and the Project 2 banking application response.
 
-```bash
-curl -i "http://$ALB/"
-```
-
-Expected:
-
-```text
-HTTP/1.1 200 OK
-```
-
-Then open:
-
-```text
-http://<ALB-DNS>
-```
-
-in a browser.
-
-Expected page:
-
-```text
-Banking DevOps Platform
-
-Project 2 - Amazon EKS Platform
-
-Successfully deployed using:
-- Terraform
-- Amazon EKS
-- Kubernetes
-- Amazon ECR
-- AWS Load Balancer Controller
-- Application Load Balancer
-
-Environment: DEV
-```
+Do not mark the deployment complete until the browser test and ALB target health both succeed.
 
 ---
 
-# 36. End-to-End Health Validation
+## 14. Phase 13 — HPA and PodDisruptionBudget
 
-A new engineer should perform these checks in this exact order.
+These are **planned enhancements**, not automatically part of the completed DEV deployment.
 
-```text
-1. AWS identity
-       ↓
-2. Terraform state/configuration
-       ↓
-3. EKS cluster ACTIVE
-       ↓
-4. Node group ACTIVE
-       ↓
-5. kubectl connectivity
-       ↓
-6. Nodes Ready
-       ↓
-7. aws-node healthy
-       ↓
-8. CoreDNS healthy
-       ↓
-9. kube-proxy healthy
-       ↓
-10. AWS Load Balancer Controller healthy
-       ↓
-11. Namespace exists
-       ↓
-12. Helm release deployed
-       ↓
-13. Deployment available
-       ↓
-14. Pod Running + Ready
-       ↓
-15. Service has endpoint
-       ↓
-16. Ingress has ALB ADDRESS
-       ↓
-17. ALB target healthy
-       ↓
-18. curl returns HTTP 200
-       ↓
-19. Browser displays Project 2 page
+Before enabling HPA:
+
+```bash
+kubectl top nodes
+kubectl top pods -n banking-dev
 ```
+
+**Why:** Verifies the Kubernetes metrics pipeline is working.
+
+Check worker capacity:
+
+```bash
+kubectl describe nodes
+```
+
+The documented `t3.micro` environment has very limited pod capacity. HPA scale-out can leave additional Pods Pending.
+
+A PodDisruptionBudget with `minAvailable: 1` and only one application replica can block voluntary disruptions. Use a production-style PDB only after validating replica count, node capacity and availability requirements.
 
 ---
 
-# 37. Quick Health-Check Commands
+## 15. Phase 14 — Argo CD / GitOps
 
-```bash
-aws sts get-caller-identity
+**Status: Planned; not yet validated.**
 
-aws eks describe-cluster \
-  --name banking-eks-dev-cluster \
-  --region us-east-1 \
-  --query 'cluster.status' \
-  --output text
+Required sequence:
 
-kubectl get nodes
+1. Verify sufficient EKS worker capacity.
+2. Install Argo CD using a pinned, reviewed installation version.
+3. Verify Argo CD components are healthy.
+4. Configure GitHub repository access.
+5. Create the Argo CD Application manifest.
+6. Point the Application to the intended Helm chart or Kustomize overlay.
+7. Validate manifest rendering.
+8. Perform an initial controlled synchronization.
+9. Confirm Argo CD reports `Synced` and `Healthy`.
+10. Validate the application through the ALB.
 
-kubectl get pods -A
-
-helm list -n banking-dev
-
-kubectl get deployment -n banking-dev
-
-kubectl get pods -n banking-dev -o wide
-
-kubectl get svc -n banking-dev
-
-kubectl get endpoints -n banking-dev
-
-kubectl get ingress -n banking-dev
-```
-
-Application URL:
-
-```bash
-ALB=$(kubectl get ingress banking-app-ingress \
-  -n banking-dev \
-  -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
-
-curl -i "http://$ALB/"
-```
+**Critical:** Before enabling Argo CD automated synchronization, confirm it will manage the same resources currently owned by Helm in a controlled handover. Do not introduce a second active deployment manager without a migration plan.
 
 ---
 
-# 38. Troubleshooting – Pod Pending
+## 16. Terraform and eksctl ownership
 
-Check:
+The existing environment associated the IAM OIDC provider using `eksctl`.
 
-```bash
-kubectl get pods -n banking-dev
-```
-
-Then:
-
-```bash
-kubectl describe pod <pod-name> -n banking-dev
-```
-
-Known error encountered:
+Terraform previously detected the external EKS tag:
 
 ```text
-0/2 nodes are available: 2 Too many pods
+alpha.eksctl.io/cluster-oidc-enabled
 ```
 
-Check pod capacity:
+This must be treated as configuration drift until reconciled.
 
-```bash
-kubectl describe nodes | \
-grep -E "Name:|pods:|Non-terminated Pods" -A 3
-```
+Do not blindly run `terraform apply` to remove or overwrite externally created infrastructure configuration.
 
-Possible solutions:
+For future reproducibility, decide whether IAM OIDC and controller IAM roles will be:
 
-```text
-Increase worker node count
-Use appropriately sized worker nodes
-Reduce unnecessary workloads
-Adjust DEV replica counts
-Review CNI/IP/pod density configuration
-```
+- Managed entirely by Terraform, or
+- Managed by documented `eksctl` commands.
 
-Do not assume CPU or memory is the problem.
-
-Always inspect scheduler Events first.
+Do not create the same IAM role, OIDC provider or Kubernetes ServiceAccount through two separate tools.
 
 ---
 
-# 39. Troubleshooting – Pod Not Ready
-
-```bash
-kubectl describe pod <pod-name> -n banking-dev
-```
-
-Check:
-
-```bash
-kubectl logs <pod-name> -n banking-dev
-```
-
-Check previous container logs if restarted:
-
-```bash
-kubectl logs <pod-name> \
-  -n banking-dev \
-  --previous
-```
-
-Validate:
-
-```text
-Image
-Container port
-Readiness probe
-Liveness probe
-Environment variables
-Application startup
-```
-
----
-
-# 40. Troubleshooting – ImagePullBackOff
-
-Check:
-
-```bash
-kubectl describe pod <pod-name> -n banking-dev
-```
-
-Verify image exists:
-
-```bash
-aws ecr describe-images \
-  --repository-name banking-eks-dev-app \
-  --region us-east-1
-```
-
-Check node IAM permissions.
-
-The node role requires ECR pull permissions.
-
-Also confirm the image architecture is compatible with the worker nodes.
-
-Current nodes:
-
-```text
-amd64
-```
-
----
-
-# 41. Troubleshooting – Apple Silicon Image
-
-Symptom may include container startup failure or:
-
-```text
-exec format error
-```
-
-Check local image:
-
-```bash
-docker image inspect <image> \
-  --format '{{.Os}}/{{.Architecture}}'
-```
-
-Build for EKS:
-
-```bash
-docker buildx build \
-  --platform linux/amd64 \
-  -t <ECR-URI>:<NEW-TAG> \
-  --push .
-```
-
----
-
-# 42. Troubleshooting – Service Has No Endpoints
-
-```bash
-kubectl get endpoints \
-  banking-app-service \
-  -n banking-dev
-```
-
-If:
-
-```text
-<none>
-```
-
-compare:
-
-```bash
-kubectl get pods \
-  -n banking-dev \
-  --show-labels
-```
-
-with:
-
-```bash
-kubectl describe svc \
-  banking-app-service \
-  -n banking-dev
-```
-
-The Service selector must match the Pod label:
-
-```text
-app=banking-app
-```
-
-The pod must also be Ready before it becomes a normal service endpoint.
-
----
-
-# 43. Troubleshooting – ALB Not Created
-
-Check:
-
-```bash
-kubectl describe ingress \
-  banking-app-ingress \
-  -n banking-dev
-```
-
-Check controller:
-
-```bash
-kubectl logs \
-  -n kube-system \
-  deployment/aws-load-balancer-controller
-```
-
-Validate:
-
-```text
-AWS Load Balancer Controller
-IRSA role
-OIDC provider
-Subnet tags
-Ingress class
-Ingress annotations
-Security groups
-IAM policy
-```
-
----
-
-# 44. Troubleshooting – ALB Returns 503
-
-Trace from inside outward:
-
-```text
-Pod
- ↓
-Readiness
- ↓
-Service
- ↓
-Endpoints
- ↓
-TargetGroupBinding
- ↓
-ALB Target Group
- ↓
-Ingress
- ↓
-ALB
-```
-
-Start with:
-
-```bash
-kubectl get pods -n banking-dev
-```
-
-Then:
-
-```bash
-kubectl get endpoints \
-  banking-app-service \
-  -n banking-dev
-```
-
-Then:
-
-```bash
-kubectl get targetgroupbinding \
-  -n banking-dev
-```
-
-Then:
-
-```bash
-kubectl describe ingress \
-  banking-app-ingress \
-  -n banking-dev
-```
-
-A previous 503 in this project was caused by the application pod being Pending because node pod capacity was exhausted.
-
----
-
-# 45. Troubleshooting – AWS Load Balancer Controller
-
-```bash
-kubectl get pods -n kube-system | \
-grep load-balancer
-```
-
-Logs:
-
-```bash
-kubectl logs \
-  -n kube-system \
-  deployment/aws-load-balancer-controller
-```
-
-Service account:
-
-```bash
-kubectl get sa \
-  aws-load-balancer-controller \
-  -n kube-system \
-  -o yaml
-```
-
-Verify IRSA annotation.
-
----
-
-# 46. TargetGroupBinding
-
-AWS Load Balancer Controller creates TargetGroupBinding resources.
-
-Check:
-
-```bash
-kubectl get targetgroupbinding \
-  -n banking-dev
-```
-
-Describe:
-
-```bash
-kubectl describe targetgroupbinding \
-  -n banking-dev
-```
-
-Current target type:
-
-```text
-ip
-```
-
-Therefore ALB targets Kubernetes pod IPs rather than worker-node NodePorts.
-
----
-
-# 47. Helm Troubleshooting
-
-Check:
-
-```bash
-helm list -n banking-dev
-```
-
-Status:
-
-```bash
-helm status banking-app -n banking-dev
-```
-
-History:
-
-```bash
-helm history banking-app -n banking-dev
-```
-
-Render without applying:
-
-```bash
-helm template banking-app . -n banking-dev
-```
-
-Validate:
-
-```bash
-helm lint .
-```
-
----
-
-# 48. Helm Rollback
-
-Check history:
-
-```bash
-helm history banking-app -n banking-dev
-```
-
-Rollback example:
-
-```bash
-helm rollback banking-app <REVISION> \
-  -n banking-dev
-```
-
-Then:
-
-```bash
-kubectl rollout status \
-  deployment/banking-app \
-  -n banking-dev
-```
-
-Always verify the application after rollback.
-
----
-
-# 49. Kubernetes Rollout Troubleshooting
-
-Check:
-
-```bash
-kubectl rollout status \
-  deployment/banking-app \
-  -n banking-dev
-```
-
-History:
-
-```bash
-kubectl rollout history \
-  deployment/banking-app \
-  -n banking-dev
-```
-
-Inspect:
-
-```bash
-kubectl get rs -n banking-dev
-```
-
-If a rollout is stuck:
-
-```bash
-kubectl get pods -n banking-dev
-kubectl describe pod <pending-or-failing-pod> -n banking-dev
-```
-
-Do not repeatedly restart a deployment without understanding the underlying event.
-
----
-
-# 50. Security Controls
-
-Current controls include:
-
-```text
-Private worker subnets
-IAM roles
-IRSA for AWS Load Balancer Controller
-ECR image scanning
-ECR encryption
-Immutable image tags
-Kubernetes health probes
-Resource requests and limits
-Dedicated Project 2 ECR repository
-Terraform-managed infrastructure
-```
-
-Future hardening should include:
-
-```text
-NetworkPolicy
-Pod Security Standards
-Secrets Manager / External Secrets
-KMS where appropriate
-Admission policies
-Image vulnerability gates
-Least-privilege Kubernetes RBAC
-WAF
-HTTPS
-Central logging
-Runtime security
-```
-
----
-
-# 51. HTTP / HTTPS
-
-The current DEV application is exposed over:
-
-```text
-HTTP :80
-```
-
-Therefore browsers may display:
-
-```text
-Not Secure
-```
-
-This is expected for the current DEV implementation.
-
-Enterprise production exposure should use:
-
-```text
-Route53
-   ↓
-ACM Certificate
-   ↓
-HTTPS :443
-   ↓
-ALB
-```
-
-Optionally redirect:
-
-```text
-HTTP :80 → HTTPS :443
-```
-
----
-
-# 52. Production Improvements
-
-The current environment demonstrates the platform architecture but is intentionally resource-constrained.
-
-Production should consider:
-
-```text
-Multiple worker nodes across AZs
-Larger/appropriate instance types
-Managed node groups or Karpenter
-Cluster Autoscaler/Karpenter
-Multiple application replicas
-HPA
-PodDisruptionBudget
-Topology spread constraints
-NetworkPolicy
-HTTPS/ACM
-Route53
-AWS WAF
-Secrets Manager
-External Secrets Operator
-Central logging
-Prometheus/Grafana
-CloudWatch integration
-Argo CD HA where required
-Backup/DR strategy
-```
-
----
-
-# 53. Argo CD / GitOps – Next Phase
-
-Target architecture:
-
-```text
-Developer
-   |
-   v
-Git Push
-   |
-   v
-Git Repository
-   |
-   v
-Argo CD
-   |
-   v
-Helm Chart
-   |
-   v
-Kubernetes
-   |
-   v
-EKS
-```
-
-Desired GitOps model:
-
-```text
-Git = Source of Truth
-```
-
-Argo CD will continuously compare:
-
-```text
-Git desired state
-        vs
-Kubernetes live state
-```
-
-and report:
-
-```text
-Synced / OutOfSync
-Healthy / Degraded
-```
-
-Do not document Argo CD as completed until installation, repository integration, synchronization and browser/application validation have been successfully tested.
-
----
-
-# 54. Monitoring – Future Phase
-
-Planned:
-
-```text
-Prometheus
-Grafana
-```
-
-Before installation, validate worker-node capacity.
-
-The current `t3.micro` lab nodes have limited pod density and should not be treated as production sizing.
-
----
-
-# 55. New Engineer Onboarding Checklist
-
-Before making any changes:
-
-- [ ] Clone correct repository
-- [ ] Verify AWS CLI
-- [ ] Verify AWS account `500788673290`
-- [ ] Verify region `us-east-1`
-- [ ] Verify Terraform version
-- [ ] Run `terraform init`
-- [ ] Run `terraform validate`
-- [ ] Review `terraform plan`
-- [ ] Verify EKS cluster is ACTIVE
-- [ ] Configure kubeconfig
-- [ ] Verify Kubernetes context
-- [ ] Verify nodes are Ready
-- [ ] Verify kube-system pods
-- [ ] Verify AWS Load Balancer Controller
-- [ ] Verify ECR repository
-- [ ] Verify application image/tag
-- [ ] Verify Helm chart
-- [ ] Run `helm lint`
-- [ ] Run Helm dry-run/template validation
-- [ ] Verify Helm release
-- [ ] Verify Deployment
-- [ ] Verify Pod Ready
-- [ ] Verify Service endpoints
-- [ ] Verify Ingress ALB address
-- [ ] Run curl test
-- [ ] Validate application in browser
-
----
-
-# 56. Operational Golden Path
-
-For an existing healthy environment:
-
-```bash
-aws sts get-caller-identity
-
-aws eks update-kubeconfig \
-  --region us-east-1 \
-  --name banking-eks-dev-cluster
-
-kubectl get nodes
-
-kubectl get pods -A
-
-helm list -n banking-dev
-
-kubectl get deployment,pods,svc,ingress \
-  -n banking-dev
-
-kubectl get endpoints \
-  banking-app-service \
-  -n banking-dev
-```
-
-Retrieve URL:
-
-```bash
-ALB=$(kubectl get ingress banking-app-ingress \
-  -n banking-dev \
-  -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
-
-echo "http://$ALB"
-
-curl -i "http://$ALB/"
-```
-
-If all checks pass:
-
-```text
-AWS Authentication       PASS
-EKS Control Plane        PASS
-Worker Nodes             PASS
-Kubernetes System Pods   PASS
-ALB Controller           PASS
-Helm Release             PASS
-Application Deployment   PASS
-Application Pod          PASS
-Service Endpoint         PASS
-Ingress / ALB            PASS
-HTTP 200                 PASS
-Browser                  PASS
-```
-
-The EKS application is operational.
-
----
-
-# 57. Incident Troubleshooting Flow
-
-Use this order instead of making random changes:
-
-```text
-Browser Failure
-      ↓
-curl ALB
-      ↓
-Ingress
-      ↓
-ALB Controller
-      ↓
-TargetGroupBinding
-      ↓
-Service Endpoints
-      ↓
-Pod Readiness
-      ↓
-Pod Status
-      ↓
-Container Logs
-      ↓
-Kubernetes Events
-      ↓
-Node Capacity / CNI
-      ↓
-AWS Infrastructure
-```
-
-Useful commands:
-
-```bash
-kubectl get events -A \
-  --sort-by='.lastTimestamp'
-
-kubectl get pods -A -o wide
-
-kubectl describe pod <pod> -n <namespace>
-
-kubectl logs <pod> -n <namespace>
-
-kubectl get endpoints -n banking-dev
-
-kubectl describe ingress banking-app-ingress \
-  -n banking-dev
-
-kubectl logs \
-  -n kube-system \
-  deployment/aws-load-balancer-controller
-```
-
----
-
-# 58. Known Issues / Lessons Learned
-
-## Issue 1 – EKS CNI
-
-Symptom:
-
-```text
-CNI failed to assign IP
-```
-
-Resolution included ensuring the node IAM role had:
-
-```text
-AmazonEKS_CNI_Policy
-```
-
----
-
-## Issue 2 – Limited Pod Capacity
-
-Symptom:
-
-```text
-FailedScheduling
-0/2 nodes are available: 2 Too many pods
-```
-
-Observed `t3.micro` capacity:
-
-```text
-4 pods per node
-```
-
-Mitigation in DEV:
-
-```text
-Application replicaCount = 1
-AWS Load Balancer Controller replicas = 1
-RollingUpdate maxSurge = 0
-```
-
-Long-term solution:
-
-```text
-Increase appropriate worker capacity / pod density.
-```
-
----
-
-## Issue 3 – ALB 503
-
-ALB existed but returned:
-
-```text
-503
-```
-
-Root cause:
-
-```text
-Application pod Pending
-        ↓
-Service had no healthy endpoint
-        ↓
-ALB target unavailable
-```
-
-Resolution:
-
-```text
-Fix Kubernetes scheduling capacity
-        ↓
-Pod Running/Ready
-        ↓
-Service endpoint created
-        ↓
-ALB target healthy
-        ↓
-Application reachable
-```
-
----
-
-## Issue 4 – Project 1 Image Reused Initially
-
-The initial EKS deployment temporarily used:
-
-```text
-banking-devops-dev-app
-```
-
-which belonged to Project 1.
-
-This caused the browser to display Project 1 content.
-
-Resolution:
-
-```text
-Create project2-eks/app
-        ↓
-Create dedicated ECR
-banking-eks-dev-app
-        ↓
-Build Project 2 image
-        ↓
-Deploy Project 2 image to EKS
-```
-
-Project separation is now maintained.
-
----
-
-## Issue 5 – Terraform vs eksctl Drift
-
-OIDC association performed with `eksctl` added:
-
-```text
-alpha.eksctl.io/cluster-oidc-enabled=true
-```
-
-Terraform detected this external change.
-
-Do not blindly remove externally created configuration without understanding its impact.
-
----
-
-# 59. Definition of Done
-
-Project 2 base platform is considered operational when:
-
-```text
-Terraform infrastructure validated
-EKS cluster ACTIVE
-Managed node group ACTIVE
-Nodes Ready
-EKS networking healthy
-AWS Load Balancer Controller healthy
-Dedicated ECR available
-Project 2 image available
-Helm chart validated
-Helm release deployed
-Application pod Ready
-Service endpoint populated
-Ingress has ALB address
-ALB target healthy
-HTTP request returns success
-Project 2 page opens in browser
-```
-
-GitOps, observability and additional security controls should be marked complete only after their respective implementation and validation.
-
----
-
-# 60. Final Architecture
-
-```text
-                     AWS
-                      |
-              +-------+-------+
-              |               |
-            Public          Private
-            Subnets         Subnets
-              |               |
-              |               v
-              |          EKS Worker Nodes
-              |               |
-              |         +-----+-----+
-              |         |           |
-              |      System      Banking App
-              |       Pods          Pod
-              |                       |
-              |                       v
-Internet ---> ALB <--- Ingress <--- Service
-              ^
-              |
-     AWS Load Balancer
-        Controller
-              ^
-              |
-             IRSA
-              |
-             IAM
-
-
-Developer
-   |
-   +---- Terraform ----> AWS Infrastructure
-   |
-   +---- Docker -------> Amazon ECR
-   |
-   +---- Helm ---------> Kubernetes
-   |
-   +---- Git ----------> Argo CD [Next Phase]
-```
-
----
-
-# 61. Current Project Status
-
-```text
-[COMPLETED] Terraform remote state integration
-[COMPLETED] Shared VPC integration
-[COMPLETED] Amazon EKS control plane
-[COMPLETED] EKS managed node group
-[COMPLETED] Kubernetes connectivity
-[COMPLETED] EKS CNI troubleshooting
-[COMPLETED] Dedicated Project 2 ECR
-[COMPLETED] Project 2 Docker image
-[COMPLETED] Kubernetes Deployment
-[COMPLETED] Kubernetes Service
-[COMPLETED] AWS Load Balancer Controller
-[COMPLETED] Kubernetes Ingress
-[COMPLETED] Internet-facing ALB
-[COMPLETED] Browser application validation
-[COMPLETED] Helm chart
-[COMPLETED] Helm ownership/adoption
-[COMPLETED] Helm upgrade validation
-
-[IN PROGRESS] Worker capacity expansion
-
-[NEXT] Argo CD / GitOps
-[NEXT] HPA / PDB
-[NEXT] NetworkPolicy
-[NEXT] Secrets integration
-[NEXT] Prometheus / Grafana
-[NEXT] DevSecOps / GitOps pipeline
-```
-
----
-
-# 62. Important Rule
-
-Before changing this platform:
-
-```text
-Observe
-   ↓
-Validate
-   ↓
-Plan
-   ↓
-Review
-   ↓
-Change
-   ↓
-Verify
-```
-
-Never troubleshoot an EKS production-style environment by making multiple unverified changes simultaneously.
-
-Every infrastructure change should be reproducible, reviewed and validated.
+## 17. Final verification checklist
+
+- [ ] AWS account and region confirmed
+- [ ] Terraform state and plan reviewed
+- [ ] EKS cluster ACTIVE
+- [ ] Node group ACTIVE
+- [ ] Worker nodes Ready
+- [ ] Kubernetes core components healthy
+- [ ] OIDC issuer verified
+- [ ] IAM OIDC provider registered
+- [ ] Controller IAM policy verified
+- [ ] IRSA trust policy verified
+- [ ] Controller ServiceAccount annotated
+- [ ] AWS Load Balancer Controller healthy
+- [ ] Public subnet discovery tags verified
+- [ ] ECR image available
+- [ ] Application Helm release deployed
+- [ ] Application Deployment available
+- [ ] Pods Running and Ready
+- [ ] Service EndpointSlices populated
+- [ ] Ingress ALB DNS populated
+- [ ] TargetGroupBinding present
+- [ ] ALB target health verified
+- [ ] HTTP 200 returned
+- [ ] Application validated in browser
+- [ ] HPA/PDB status accurately documented
+- [ ] Argo CD status accurately documented
+- [ ] No Project 1 infrastructure changed
+
+## 18. Definition of Done
+
+The base EKS platform is operational only when the AWS infrastructure, Kubernetes workloads, controller, Ingress, ALB targets and browser-level application validation succeed.
+
+OIDC and IRSA must be documented as mandatory controller prerequisites.
+
+Argo CD, autoscaling, monitoring and production security enhancements must not be represented as completed until individually deployed and validated.
+
+**Operational rule:**
+
+Observe → Validate → Plan → Review → Change → Verify → Document.
